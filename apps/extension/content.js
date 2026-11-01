@@ -64,6 +64,21 @@
     o.start();
     o.stop(audioCtx.currentTime + dur);
   }
+  // نداء صوتي: نطق نص الإدارة بالعربي عبر متصفح الموظف (بدون أي سيرفر)
+  function speak(text) {
+    try {
+      if (!text || !window.speechSynthesis) return;
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = "ar-EG";
+      u.rate = 1;
+      u.volume = 1;
+      const voices = window.speechSynthesis.getVoices();
+      const ar = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("ar"));
+      if (ar) u.voice = ar;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(u);
+    } catch (_) {}
+  }
 
   // ---------- shadow bar ----------
   let root, els;
@@ -95,6 +110,9 @@
         .rank{ background:#111827;border:1px solid #273243;border-radius:999px;padding:3px 9px;color:#fbbf24;font-weight:700; }
         .spot{ display:none;align-items:center;gap:6px;background:#7f1d1d;color:#fecaca;padding:3px 9px;border-radius:7px;font-weight:700; }
         .spot.on{ display:flex; animation:pr 1.3s infinite; }
+        .peak{ display:none;align-items:center;gap:5px;background:#ea580c;color:#fff;padding:3px 9px;border-radius:7px;font-weight:700; }
+        .peak.on{ display:inline-flex; }
+        .bar.peak-on{ background:#431407; }
         .eye{ display:none;align-items:center;gap:5px;color:#fca5a5; }
         .eye.on{ display:flex; }
         @keyframes pr{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}50%{box-shadow:0 0 0 7px rgba(239,68,68,0)}}
@@ -123,6 +141,7 @@
           <span class="eye" id="eye">👁 مراقبة مباشرة</span>
           <span class="spacer"></span>
           <span class="spot" id="spot">🔴 الإدارة تتابع شاشتك الآن</span>
+          <span class="peak" id="peak"></span>
           <span class="rank" id="rank" style="display:none"></span>
           <span id="controls" style="display:flex;gap:8px;align-items:center"></span>
           <button id="chatBtn" title="الشات الداخلي">💬</button>
@@ -150,6 +169,8 @@
       rank: root.getElementById("rank"),
       controls: root.getElementById("controls"),
       chatBtn: root.getElementById("chatBtn"),
+      bar: root.querySelector(".bar"),
+      peak: root.getElementById("peak"),
       toasts: root.getElementById("toasts"),
       panel: root.getElementById("panel"),
       msgs: root.getElementById("msgs"),
@@ -202,6 +223,19 @@
     // spotlight / live indicators
     els.spot.classList.toggle("on", !!(live && live.spotlight));
     els.eye.classList.toggle("on", !!(live && live.liveWatching));
+
+    // وضع الذروة: شريط برتقالي + عدّاد الرسائل المتبقية
+    if (els.peak && els.bar) {
+      const p = state.peak;
+      if (p && p.on) {
+        els.peak.classList.add("on");
+        els.peak.textContent = `🔥 ذروة — تبقى ${p.remaining} رسالة`;
+        els.bar.classList.add("peak-on");
+      } else {
+        els.peak.classList.remove("on");
+        els.bar.classList.remove("peak-on");
+      }
+    }
     if (live && live.spotlight && !state.spotlightBeeped) { beep(880, 0.15, 0.06); state.spotlightBeeped = true; }
     if (live && !live.spotlight) state.spotlightBeeped = false;
 
@@ -328,7 +362,7 @@
       extensionConnected: true,
     });
     state.mouseMoved = false;
-    if (r.ok && r.data) { state.live = r.data; render(); }
+    if (r.ok && r.data) { state.live = r.data; state.peak = r.data.peak; render(); }
   }
   let mouseTimer = 0;
   document.addEventListener("mousemove", () => {
@@ -343,8 +377,9 @@
     (r.data || []).forEach((n) => {
       if (state.seenNotif.has(n.id)) return;
       state.seenNotif.add(n.id);
-      const titles = { notice: "إشعار من الإدارة", message: "رسالة من الإدارة", violation: "⚠ مخالفة", broadcast_audio: "🔊 بث صوتي", spotlight: "🔴 عين الرقابة" };
+      const titles = { notice: "إشعار", message: "رسالة من الإدارة", violation: "⚠ مخالفة", broadcast_audio: "🔊 نداء صوتي", spotlight: "🔴 عين الرقابة" };
       toast(titles[n.type] || "إشعار", n.body, n.type === "broadcast_audio" || n.type === "violation");
+      if (n.type === "broadcast_audio") speak(n.body);
     });
   }
 

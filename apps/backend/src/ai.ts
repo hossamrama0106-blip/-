@@ -2,9 +2,6 @@
 // يستخدم Groq لو فيه GROQ_API_KEY، وإلا heuristic محلي (نفس الواجهة) — فالنظام يعمل كامل بدون مفاتيح.
 import type { ReplyVerdict } from "@khiam/shared";
 
-const GROQ_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
-
 export interface EvalMessage {
   role: "customer" | "agent" | string;
   text: string;
@@ -18,7 +15,7 @@ export interface EvalResult {
   score: number; // 0..100
   notes: string;
   dealAtRisk: boolean;
-  source: "groq" | "local";
+  source: string; // اسم المزوّد الذي أنتج التقييم (groq/openrouter/gemini/local)
 }
 
 const POLITE = ["اهلا", "أهلا", "حضرتك", "تمام", "شكرا", "من فضلك", "لو سمحت", "يسعدنا", "ممنون", "👍", "🙏", "❤", "😊", "حاضر"];
@@ -82,49 +79,86 @@ export function evaluateLocal(input: EvalInput): EvalResult {
   return { verdict, score, notes: notes.join("، ") || "رد عادي", dealAtRisk, source: "local" };
 }
 
-async function evaluateWithGroq(input: EvalInput): Promise<EvalResult> {
-  const convo = (input.messages || [])
-    .map((m) => `${m.role === "agent" ? "الموظف" : "العميل"}: ${m.text}`)
-    .join("\n");
-  const sys =
-    'أنت مقيّم جودة خدمة عملاء لمتجر ملابس مصري. قيّم آخر رد من "الموظف". ' +
-    'أعد JSON فقط بالشكل: {"verdict":"good|ok|bad","score":0-100,"notes":"سبب مختصر بالعربي","dealAtRisk":true|false}. ' +
-    "good=ممتاز ومهذّب وأجاب، ok=مقبول، bad=مقتضب أو لم يجب أو غير مهذّب. dealAtRisk=true لو العميل عنده نية شراء ولم يُخدَم جيدًا.";
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+// موجّه متعدد المزوّدين (AI Fallback Router): يجرّب المزوّدين المتاحين بالترتيب وينزل للتقييم المحلي.
+const SYS =
+  'أنت مقيّم جودة خدمة عملاء لمتجر ملابس مصري. قيّم آخر رد من "الموظف". ' +
+  'أعد JSON فقط: {"verdict":"good|ok|bad","score":0-100,"notes":"سبب مختصر بالعربي","dealAtRisk":true|false}. ' +
+  "good=ممتاز ومهذّب وأجاب، ok=مقبول، bad=مقتضب أو لم يجب أو غير مهذّب. dealAtRisk=true لو العميل عنده نية شراء ولم يُخدَم جيدًا.";
+
+function buildConvo(input: EvalInput): string {
+  return (input.messages || []).map((m) => `${m.role === "agent" ? "الموظف" : "العميل"}: ${m.text}`).join("\n");
+}
+
+function parseResult(txt: string): EvalResult {
+  const parsed = JSON.parse(txt || "{}");
+  const verdict: ReplyVerdict = ["good", "ok", "bad"].includes(parsed.verdict) ? parsed.verdict : "ok";
+  return { verdict, score: Number(parsed.score) || 60, notes: String(parsed.notes || ""), dealAtRisk: !!parsed.dealAtRisk, source: "local" };
+}
+
+// Groq و OpenRouter متوافقان مع واجهة OpenAI
+async function evalOpenAICompat(input: EvalInput, url: string, key: string, model: string): Promise<EvalResult> {
+  const res = await fetch(url, {
     method: "POST",
-    headers: { "content-type": "application/json", authorization: `Bearer ${GROQ_KEY}` },
+    headers: { "content-type": "application/json", authorization: `Bearer ${key}` },
     body: JSON.stringify({
-      model: GROQ_MODEL,
+      model,
       temperature: 0.2,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: sys },
-        { role: "user", content: convo },
+        { role: "system", content: SYS },
+        { role: "user", content: buildConvo(input) },
       ],
     }),
   });
-  if (!res.ok) throw new Error("groq " + res.status);
+  if (!res.ok) throw new Error("ai " + res.status);
   const data: any = await res.json();
-  const parsed = JSON.parse(data.choices?.[0]?.message?.content || "{}");
-  const verdict: ReplyVerdict = ["good", "ok", "bad"].includes(parsed.verdict) ? parsed.verdict : "ok";
-  return {
-    verdict,
-    score: Number(parsed.score) || 60,
-    notes: String(parsed.notes || "تقييم Groq"),
-    dealAtRisk: !!parsed.dealAtRisk,
-    source: "groq",
-  };
+  return parseResult(data.choices?.[0]?.message?.content || "{}");
+}
+
+async function evalGemini(input: EvalInput, key: string, model: string): Promise<EvalResult> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: SYS + "\n\n" + buildConvo(input) }] }],
+      generationConfig: { responseMimeType: "application/json", temperature: 0.2 },
+    }),
+  });
+  if (!res.ok) throw new Error("gemini " + res.status);
+  const data: any = await res.json();
+  return parseResult(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+}
+
+interface Provider {
+  name: string;
+  run: (input: EvalInput) => Promise<EvalResult>;
+}
+
+function providers(): Provider[] {
+  const list: Provider[] = [];
+  const groq = process.env.GROQ_API_KEY;
+  const openrouter = process.env.OPENROUTER_API_KEY;
+  const gemini = process.env.GEMINI_API_KEY;
+  if (groq) list.push({ name: "groq", run: (i) => evalOpenAICompat(i, "https://api.groq.com/openai/v1/chat/completions", groq, process.env.GROQ_MODEL || "llama-3.3-70b-versatile") });
+  if (openrouter) list.push({ name: "openrouter", run: (i) => evalOpenAICompat(i, "https://openrouter.ai/api/v1/chat/completions", openrouter, process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free") });
+  if (gemini) list.push({ name: "gemini", run: (i) => evalGemini(i, gemini, process.env.GEMINI_MODEL || "gemini-1.5-flash") });
+  return list;
 }
 
 export async function evaluateReply(input: EvalInput): Promise<EvalResult> {
-  if (GROQ_KEY) {
+  for (const p of providers()) {
     try {
-      return await evaluateWithGroq(input);
+      const r = await p.run(input);
+      return { ...r, source: p.name };
     } catch {
-      // fallback للمحلي عند أي خطأ
+      // جرّب المزوّد التالي عند أي خطأ/امتلاء حد
     }
   }
   return evaluateLocal(input);
 }
 
-export const aiMode = () => (GROQ_KEY ? "groq" : "local");
+export function aiMode(): string {
+  const names = providers().map((p) => p.name);
+  return names.length ? names.join("→") + "→local" : "local";
+}

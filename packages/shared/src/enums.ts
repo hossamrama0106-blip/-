@@ -111,5 +111,6 @@ export const Thresholds = {
   OFFLINE_MS: 3 * 60 * 1000, // غير متصل بعد 3 دقائق بدون heartbeat
   CHERRY_PICK_LIMIT: 3, // فتح وخروج بدون رد > 3 مرات = تهرب من عميل
   QUEUE_PRESSURE: 15, // عدد رسائل الانتظار اللي يعتبر ضغط
+  PEAK_UNREAD: 25, // عتبة وضع الذروة (Peak Hour Turbo)
   PURGE_ROUTINE_MS: 48 * 60 * 60 * 1000, // حذف البيانات الروتينية بعد 48 ساعة
 } as const;

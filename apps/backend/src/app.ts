@@ -175,7 +175,7 @@ app.post("/api/presence", async (c) => {
   }>();
   const live = store.heartbeat(body.employeeId, body as any);
   const commands = store.popCommands(body.employeeId);
-  return c.json({ ...live, commands });
+  return c.json({ ...live, commands, peak: store.peakStatus() });
 });
 
 // ---------- shifts / breaks ----------
@@ -357,6 +357,7 @@ app.get("/api/snapshot", (c) =>
     reviews: store.reviews.slice(-30).reverse(),
     nightMode: store.nightMode,
     aiMode: aiMode(),
+    peak: store.peakStatus(),
   }),
 );
 

@@ -1,9 +1,11 @@
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
+import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, alerts } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, adminId, alerts } = useDash(useShallow((s) => ({
     connected: s.connected,
+    adminId: s.adminId,
     inbox: s.inbox,
     live: s.live,
     employees: s.employees,
@@ -33,7 +35,23 @@ export default function TopBar() {
       <Stat label="تعليقات غير مقروءة" value={inbox.unreadComments} tone={inbox.unreadComments >= 10 ? "warn" : "neutral"} />
       <Stat label="موظفون نشطون" value={`${activeCount}/${employees.length}`} tone="good" />
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
+      {inbox.unreadMessages >= 25 && (
+        <div className="text-center px-3 py-1 rounded-lg bg-orange-600 text-white min-w-20 pulse-red">
+          <div className="text-xl font-extrabold leading-none">🔥</div>
+          <div className="text-[11px] mt-1 whitespace-nowrap">ذروة — {inbox.unreadMessages} متبقية</div>
+        </div>
+      )}
 
+      <button
+        onClick={() => {
+          const t = prompt("اكتب نص النداء الصوتي لكل الموظفين (هيُنطق عند الجميع):");
+          if (t) api.sendNotification({ type: "broadcast_audio", from: adminId ?? "admin", to: "all", body: t });
+        }}
+        title="نداء صوتي جماعي"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        📢
+      </button>
       <button
         onClick={() => setShowSettings(true)}
         title="الإعدادات والتكاملات"

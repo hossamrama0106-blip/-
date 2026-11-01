@@ -266,6 +266,7 @@ class Store {
     l.presence = PresenceState.WORKING;
     l.online = true;
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "start", session: s });
+    this.announceTeam(employeeId, "بدأ الشيفت");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
     return s;
   }
@@ -277,6 +278,7 @@ class Store {
     const l = this.getLive(employeeId);
     l.presence = PresenceState.SHIFT_ENDED;
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "end", session: s });
+    this.announceTeam(employeeId, "أنهى الشيفت");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
     return s;
   }
@@ -297,6 +299,7 @@ class Store {
           ? PresenceState.WC
           : PresenceState.BREAK;
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "break_start", break: b });
+    this.announceTeam(employeeId, type === BreakType.PRAYER ? "في استراحة صلاة" : type === BreakType.WC ? "في الحمام" : "في بريك");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
     return b;
   }
@@ -492,6 +495,10 @@ class Store {
     else hub.toEmployeeAndAdmins(n.to, RealtimeEvent.NOTIFICATION, n);
     return n;
   }
+  private announceTeam(employeeId: string, action: string): void {
+    const emp = this.findEmployee(employeeId);
+    this.addNotification({ type: NotificationType.NOTICE, from: "system", to: "all", body: `${emp?.name ?? "موظف"} ${action}` });
+  }
   replyNotification(id: string, reply: string): NotificationItem | null {
     const n = this.notifications.find((x) => x.id === id);
     if (!n) return null;
@@ -528,6 +535,9 @@ class Store {
     this.inbox = { unreadMessages, unreadComments, at: nowIso() };
     hub.broadcast(RealtimeEvent.COUNTERS_UPDATED, { inbox: this.inbox });
     return this.inbox;
+  }
+  peakStatus(): { on: boolean; remaining: number } {
+    return { on: this.inbox.unreadMessages >= Thresholds.PEAK_UNREAD, remaining: this.inbox.unreadMessages };
   }
 
   // ---------- screenshots ----------
