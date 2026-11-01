@@ -2,7 +2,7 @@ import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, alerts } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, alerts } = useDash(useShallow((s) => ({
     connected: s.connected,
     inbox: s.inbox,
     live: s.live,
@@ -11,6 +11,7 @@ export default function TopBar() {
     setLite: s.setLite,
     nightMode: s.nightMode,
     setNight: s.setNight,
+    setShowSettings: s.setShowSettings,
     alerts: s.alerts,
   })));
 
@@ -33,6 +34,13 @@ export default function TopBar() {
       <Stat label="موظفون نشطون" value={`${activeCount}/${employees.length}`} tone="good" />
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
 
+      <button
+        onClick={() => setShowSettings(true)}
+        title="الإعدادات والتكاملات"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        ⚙️
+      </button>
       <button
         onClick={() => setNight(!nightMode)}
         title="الرادار الليلي الآلي"

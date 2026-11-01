@@ -322,6 +322,8 @@
       typing,
       typingWpm: currentWpm(),
       currentWindow: document.title || SITE,
+      metaFocused: document.visibilityState === "visible",
+      clientTime: Date.now(),
       mouseMoved: state.mouseMoved === true,
       extensionConnected: true,
     });

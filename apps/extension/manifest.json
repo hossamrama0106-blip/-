@@ -3,7 +3,7 @@
   "name": "Khiam Ops — متابعة الموظف",
   "version": "0.1.0",
   "description": "شريط متابعة فريق خدمة العملاء داخل Meta Business Suite / WhatsApp / Instagram / Operix.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "history"],
   "host_permissions": [
     "http://localhost:8787/*",
     "https://business.facebook.com/*",

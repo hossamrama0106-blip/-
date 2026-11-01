@@ -91,8 +91,19 @@ export const api = {
 
   sendNotification: (data: { type: string; from: string; to: string; body: string }) =>
     http<NotificationItem>("/notifications", { method: "POST", body: JSON.stringify(data) }),
-  addViolation: (data: { employeeId: string; type: string; severity?: string; reason: string }) =>
+  addViolation: (data: { employeeId: string; type: string; severity?: string; reason: string; link?: string; imageUrl?: string }) =>
     http<Violation>("/violations", { method: "POST", body: JSON.stringify(data) }),
+  timeline: (employeeId: string) =>
+    http<Array<{ id: string; label: string; category: string; at: string }>>(`/timeline?employeeId=${encodeURIComponent(employeeId)}`),
+  history: (employeeId: string) =>
+    http<Array<{ id: string; url: string; title: string; visitAt: string }>>(`/history?employeeId=${encodeURIComponent(employeeId)}`),
+  queueCommand: (id: string, cmd: string) =>
+    http(`/employees/${id}/command`, { method: "POST", body: JSON.stringify({ cmd }) }),
+  screenshotsFor: (employeeId: string) =>
+    http<Array<{ id: string; dataUrl: string; at: string }>>(`/screenshots?employeeId=${encodeURIComponent(employeeId)}`),
+  getSettings: () => http<{ googleSheetWebhook: string; ntfyTopic: string }>("/settings"),
+  setSettings: (body: { googleSheetWebhook?: string; ntfyTopic?: string }) =>
+    http<{ googleSheetWebhook: string; ntfyTopic: string }>("/settings", { method: "POST", body: JSON.stringify(body) }),
   addPoint: (data: { employeeId: string; delta: number; reason: string }) =>
     http("/points", { method: "POST", body: JSON.stringify(data) }),
   resolveAlert: (id: string) => http(`/alerts/${id}/resolve`, { method: "POST" }),

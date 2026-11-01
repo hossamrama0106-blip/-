@@ -19,6 +19,8 @@ interface DashState {
   notifications: NotificationItem[];
 
   selectedId: string | null;
+  liveEmployeeId: string | null;
+  showSettings: boolean;
 
   login: (code: string) => Promise<void>;
   loadSnapshot: () => Promise<void>;
@@ -26,6 +28,9 @@ interface DashState {
   select: (id: string | null) => void;
   setLite: (v: boolean) => void;
   setNight: (v: boolean) => Promise<void>;
+  openLive: (id: string) => void;
+  closeLive: () => void;
+  setShowSettings: (v: boolean) => void;
   refreshLeaderboard: () => Promise<void>;
 }
 
@@ -46,6 +51,8 @@ export const useDash = create<DashState>((set, get) => ({
   violations: [],
   notifications: [],
   selectedId: null,
+  liveEmployeeId: null,
+  showSettings: false,
 
   async login(code: string) {
     const res: any = await api.login(code);
@@ -139,6 +146,9 @@ export const useDash = create<DashState>((set, get) => ({
 
   select: (id) => set({ selectedId: id }),
   setLite: (v) => set({ liteMode: v }),
+  openLive: (id) => set({ liveEmployeeId: id }),
+  closeLive: () => set({ liveEmployeeId: null }),
+  setShowSettings: (v) => set({ showSettings: v }),
   async setNight(v) {
     try {
       await api.setNightMode(v);

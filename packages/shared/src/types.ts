@@ -43,10 +43,13 @@ export interface LiveStatus {
   lastOpenedMsgAt: Millis | null; // آخر رسالة فتحها
   currentWindow: string | null; // عنوان النافذة/التبويب الحالي
   currentConversation: string | null; // اسم/مرجع المحادثة الحالية
+  currentActivity: string | null; // وصف بشري: يكتب في محادثة X / تبويب آخر Y / خارج كروم Z
+  metaFocused: boolean; // هل تبويب العمل هو النشط الآن
   extensionConnected: boolean;
   agentConnected: boolean;
   liveWatching: boolean; // الإدارة بتتفرج لايف دلوقتي
   spotlight: boolean; // عين الرقابة العلنية مفعّلة
+  superMonitor: boolean; // مراقبة فائقة مستمرة (كوضع ليلي خاص بالموظف)
 }
 
 /** جلسة شيفت */
@@ -100,6 +103,7 @@ export interface ReplyReview {
   score: number; // 0..100
   aiNotes: string;
   sampleText: string; // آخر الرسائل التي قُيّمت
+  evidenceUrl: string | null; // لقطة/دليل مرتبط بالتقييم
   at: ISODate;
   approvedBy: ID | null; // اعتماد الإدارة للرد
 }
@@ -122,6 +126,8 @@ export interface Violation {
   severity: ViolationSeverity;
   reason: string;
   screenshotUrl: string | null;
+  imageUrl: string | null; // صورة/دليل مرفق
+  link: string | null; // رابط مرفق (محادثة/بوست)
   at: ISODate;
   acknowledgedAt: ISODate | null; // رد الموظف/اطّلاعه
   reply: string | null; // رد الموظف على المخالفة

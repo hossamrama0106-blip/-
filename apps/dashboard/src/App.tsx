@@ -10,6 +10,8 @@ import Leaderboard from "./components/Leaderboard";
 import AlertsRail from "./components/AlertsRail";
 import DetailPanel from "./components/DetailPanel";
 import LiteMode from "./components/LiteMode";
+import LiveModal from "./components/LiveModal";
+import Settings from "./components/Settings";
 
 export default function App() {
   const { loggedIn, liteMode } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode })));
@@ -19,6 +21,8 @@ export default function App() {
       <TopBar />
       {liteMode ? <LiteMode /> : <FullDashboard />}
       <DetailPanel />
+      <LiveModal />
+      <Settings />
     </div>
   );
 }

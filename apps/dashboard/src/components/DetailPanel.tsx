@@ -6,25 +6,35 @@ import { api } from "../api";
 import { PRESENCE_LABEL, STATUS_META, clockAt, fmtGap, timeAgo } from "../lib/ui";
 
 export default function DetailPanel() {
-  const { selectedId, employees, live, leaderboard, adminId, select } = useDash(useShallow((s) => ({
+  const { selectedId, employees, live, leaderboard, adminId, select, openLive } = useDash(useShallow((s) => ({
     selectedId: s.selectedId,
     employees: s.employees,
     live: s.live,
     leaderboard: s.leaderboard,
     adminId: s.adminId,
     select: s.select,
+    openLive: s.openLive,
   })));
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [shot, setShot] = useState<{ dataUrl: string; at: string; width: number } | null>(null);
-  const [reviews, setReviews] = useState<Array<{ id: string; verdict: string; score: number; aiNotes: string; conversationRef: string }>>([]);
+  const [reviews, setReviews] = useState<Array<{ id: string; verdict: string; score: number; aiNotes: string; conversationRef: string; evidenceUrl?: string | null }>>([]);
+  const [timeline, setTimeline] = useState<Array<{ id: string; label: string; category: string; at: string }>>([]);
+  const [history, setHistory] = useState<Array<{ id: string; url: string; title: string; visitAt: string }>>([]);
+  const [vioLink, setVioLink] = useState("");
+  const [vioImg, setVioImg] = useState<string | null>(null);
 
   useEffect(() => {
     setShot(null);
     setReviews([]);
+    setTimeline([]);
+    setHistory([]);
+    setVioLink("");
+    setVioImg(null);
     if (selectedId) {
       api.latestScreenshot(selectedId).then(setShot).catch(() => {});
       api.reviewsFor(selectedId).then(setReviews).catch(() => {});
+      api.timeline(selectedId).then(setTimeline).catch(() => {});
     }
   }, [selectedId]);
 
@@ -69,6 +79,12 @@ export default function DetailPanel() {
             </div>
           </div>
           <button onClick={() => select(null)} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        {/* النشاط الحالي */}
+        <div className="mb-3 bg-ink-850 border border-ink-800 rounded-lg px-3 py-2">
+          <div className="text-[11px] text-slate-500">النشاط الحالي</div>
+          <div className="text-sm text-white">{l?.currentActivity ?? "—"}</div>
         </div>
 
         {/* الحالة اللحظية */}
@@ -128,6 +144,41 @@ export default function DetailPanel() {
           </div>
         </Section>
 
+        {/* رقابة متقدمة: لايف + هيستوري */}
+        <Section title="رقابة متقدمة">
+          <div className="grid grid-cols-2 gap-2">
+            <ActBtn label="🔴 فتح اللايف" onClick={() => { api.setFlags(emp.id, { liveWatching: true }).catch(() => {}); openLive(emp.id); }} />
+            <ActBtn label="⬇ اسحب الهيستوري" onClick={() => act("hist", async () => { await api.queueCommand(emp.id, "pull_history"); setTimeout(() => api.history(emp.id).then(setHistory).catch(() => {}), 4000); })} />
+          </div>
+          {history.length > 0 && (
+            <div className="mt-2 max-h-40 overflow-y-auto space-y-1">
+              {history.slice(0, 20).map((h) => (
+                <div key={h.id} className="text-[11px] bg-ink-850 border border-ink-800 rounded px-2 py-1">
+                  <div className="text-slate-200 truncate">{h.title || h.url}</div>
+                  <div className="text-slate-500 truncate" dir="ltr">{h.url}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
+        {/* الخط الزمني للنشاط (كل خطوة محفوظة) */}
+        <Section title="الخط الزمني (كل خطوة)">
+          {timeline.length === 0 ? (
+            <div className="text-xs text-slate-500">لا يوجد نشاط مسجّل بعد.</div>
+          ) : (
+            <div className="max-h-48 overflow-y-auto space-y-1">
+              {timeline.slice(0, 25).map((t) => (
+                <div key={t.id} className="flex items-center gap-2 text-xs">
+                  <span className="text-[10px] text-slate-500 w-12 shrink-0">{clockAt(t.at)}</span>
+                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${t.category === "work" ? "bg-emerald-500" : t.category === "other" ? "bg-slate-500" : "bg-red-500"}`} />
+                  <span className="text-slate-200 truncate">{t.label}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </Section>
+
         {/* تقييم الردود بالذكاء الاصطناعي */}
         <Section title="تقييم الردود (AI)">
           {reviews.length === 0 ? (
@@ -140,6 +191,7 @@ export default function DetailPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-slate-200">{r.aiNotes}</div>
                     <div className="text-[10px] text-slate-500 truncate">{r.conversationRef} · {r.score}/100</div>
+                    {r.evidenceUrl && <img src={r.evidenceUrl} alt="دليل" className="mt-1 h-16 rounded border border-ink-800" />}
                   </div>
                 </div>
               ))}
@@ -177,11 +229,41 @@ export default function DetailPanel() {
             <ActBtn label="➕ نقطة خضراء" tone="good" onClick={() => act("plus", () => api.addPoint({ employeeId: emp.id, delta: 1, reason: "تقييم إداري" }))} />
             <ActBtn label="➖ نقطة حمراء" tone="bad" onClick={() => act("minus", () => api.addPoint({ employeeId: emp.id, delta: -1, reason: "تقييم إداري" }))} />
           </div>
+          <input
+            value={vioLink}
+            onChange={(e) => setVioLink(e.target.value)}
+            dir="ltr"
+            placeholder="رابط المحادثة/البوست (اختياري)"
+            className="w-full mt-2 bg-ink-850 border border-ink-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-brand-400"
+          />
+          <label className="block mt-2 text-xs text-slate-400 cursor-pointer bg-ink-850 border border-ink-700 rounded-lg px-3 py-2">
+            {vioImg ? "✓ صورة مرفقة (اضغط لتغييرها)" : "📎 إرفاق صورة/دليل (اختياري)"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) {
+                  const rd = new FileReader();
+                  rd.onload = () => setVioImg(String(rd.result));
+                  rd.readAsDataURL(f);
+                }
+              }}
+            />
+          </label>
           <ActBtn
             full
             tone="bad"
             label="تسجيل مخالفة"
-            onClick={() => act("vio", () => api.addViolation({ employeeId: emp.id, type: "مخالفة إدارية", severity: "medium", reason: msg || "مخالفة مسجّلة من الإدارة" }))}
+            onClick={() =>
+              act("vio", async () => {
+                await api.addViolation({ employeeId: emp.id, type: "مخالفة إدارية", severity: "medium", reason: msg || "مخالفة مسجّلة من الإدارة", link: vioLink || undefined, imageUrl: vioImg || undefined });
+                setVioLink("");
+                setVioImg(null);
+                setMsg("");
+              })
+            }
           />
           <div className="text-[11px] text-slate-500 mt-2">
             بدأ الشيفت: {clockAt(l?.lastReplyAt ?? null) === "—" ? "—" : "اليوم"} · الواتساب: <span dir="ltr">{emp.whatsapp}</span>

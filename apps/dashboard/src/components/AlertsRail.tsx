@@ -77,6 +77,10 @@ export default function AlertsRail() {
                 </div>
                 <div className="text-red-300 text-xs mt-0.5">{v.type}</div>
                 <div className="text-slate-400 text-xs">{v.reason}</div>
+                {v.link && (
+                  <a href={v.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-brand-400 text-[11px] underline">فتح الرابط المرفق</a>
+                )}
+                {v.imageUrl && <img src={v.imageUrl} alt="دليل" className="mt-1 h-14 rounded border border-ink-800" />}
               </div>
             ))}
           </div>

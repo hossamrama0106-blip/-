@@ -48,13 +48,16 @@ app.use("/api/*", async (c, next) => {
     (path === "/api/notifications" && m === "POST") ||
     (path === "/api/inbox" && m === "POST") ||
     (path === "/api/ai/night-mode" && m === "POST") ||
+    path === "/api/timeline" ||
+    (path === "/api/history" && m === "GET") ||
+    path === "/api/settings" ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
   if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
 
   if (id.role !== "admin") {
     const SELF_POST = new Set([
       "/api/presence", "/api/activity", "/api/shift/start", "/api/shift/end",
-      "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots",
+      "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots", "/api/history",
     ]);
     if (m === "POST" && SELF_POST.has(path)) {
       let body: any = {};
@@ -153,7 +156,7 @@ app.post("/api/employees/:id/flags", async (c) => {
   const id = c.req.param("id");
   const patch = await c.req.json<{ liveWatching?: boolean; spotlight?: boolean; superMonitor?: boolean }>();
   if (patch.superMonitor !== undefined) store.updateEmployee(id, { superMonitor: patch.superMonitor });
-  const live = store.setLiveFlags(id, { liveWatching: patch.liveWatching, spotlight: patch.spotlight });
+  const live = store.setLiveFlags(id, { liveWatching: patch.liveWatching, spotlight: patch.spotlight, superMonitor: patch.superMonitor });
   return c.json(live);
 });
 
@@ -171,7 +174,8 @@ app.post("/api/presence", async (c) => {
     agentConnected?: boolean;
   }>();
   const live = store.heartbeat(body.employeeId, body as any);
-  return c.json(live);
+  const commands = store.popCommands(body.employeeId);
+  return c.json({ ...live, commands });
 });
 
 // ---------- shifts / breaks ----------
@@ -235,6 +239,7 @@ app.post("/api/ai/evaluate", async (c) => {
     score: result.score,
     aiNotes: result.notes,
     sampleText: (body.messages || []).map((m) => `${m.role}: ${m.text}`).join("\n").slice(0, 400),
+    evidenceUrl: (body as any).evidenceUrl ?? null,
   });
   if (result.dealAtRisk) {
     store.raiseAlert({ employeeId: body.employeeId, kind: "deal_at_risk", severity: "high", message: "أوردر محتمل يضيع — تدخّل الآن" });
@@ -250,7 +255,8 @@ app.post("/api/ai/night-mode", async (c) => {
 // ---------- violations ----------
 app.get("/api/violations", (c) => c.json(store.violations));
 app.post("/api/violations", async (c) => {
-  const body = await c.req.json();
+  const body = await c.req.json<any>();
+  if (body.imageUrl && String(body.imageUrl).length > 900000) return c.json({ error: "image too large" }, 400);
   return c.json(store.addViolation(body), 201);
 });
 app.post("/api/violations/:id/ack", async (c) => {
@@ -314,6 +320,28 @@ app.get("/api/screenshots", (c) => {
 app.get("/api/screenshots/latest", (c) => {
   const id = c.req.query("employeeId") ?? "";
   return c.json(store.latestScreenshot(id));
+});
+
+// ---------- timeline / history / commands / settings ----------
+app.get("/api/timeline", (c) => c.json(store.timelineFor(c.req.query("employeeId") ?? "", Number(c.req.query("limit") ?? 60))));
+app.get("/api/history", (c) => c.json(store.historyFor(c.req.query("employeeId") ?? "", Number(c.req.query("limit") ?? 100))));
+app.post("/api/history", async (c) => {
+  const body = await c.req.json<{ employeeId: string; items: { url: string; title?: string; visitAt?: string }[] }>();
+  return c.json({ added: store.addHistory(body.employeeId, body.items || []) }, 201);
+});
+app.post("/api/employees/:id/command", async (c) => {
+  const { cmd } = await c.req.json<{ cmd: string }>();
+  store.queueCommand(c.req.param("id"), cmd);
+  return c.json({ ok: true });
+});
+app.get("/api/screenshots/:id", (c) => {
+  const s = store.screenshots.find((x) => x.id === c.req.param("id"));
+  return s ? c.json(s) : c.json({ error: "not_found" }, 404);
+});
+app.get("/api/settings", (c) => c.json(store.getConfig()));
+app.post("/api/settings", async (c) => {
+  const body = await c.req.json<{ googleSheetWebhook?: string; ntfyTopic?: string }>();
+  return c.json(store.setConfig(body));
 });
 
 // ---------- snapshot (الحالة الكاملة لأول تحميل) ----------

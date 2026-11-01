@@ -228,7 +228,13 @@ def main():
             moved = (idle < interval * 1000 + 3000) or (cur != last_cursor)
             last_cursor = cur
 
-            payload = {"employeeId": eid, "agentConnected": True, "currentWindow": (title or proc or "—")[:120], "mouseMoved": bool(moved)}
+            payload = {
+                "employeeId": eid,
+                "agentConnected": True,
+                "currentWindow": (title or proc or "—")[:120],
+                "mouseMoved": bool(moved),
+                "clientTime": int(time.time() * 1000),  # لكشف التلاعب بساعة الجهاز
+            }
             if status_hint:
                 payload["status"] = status_hint
             try:
@@ -238,7 +244,7 @@ def main():
                 time.sleep(interval)
                 continue
 
-            flag_live = bool(live.get("liveWatching"))
+            flag_live = bool(live.get("liveWatching")) or bool(live.get("superMonitor"))
             print(f"[{time.strftime('%H:%M:%S')}] نافذة='{payload['currentWindow']}' فئة={cat} خمول={idle // 1000}ث لايف={'●' if flag_live else '-'}")
 
             if flag_live and cfg["allowCapture"] and capture_available():

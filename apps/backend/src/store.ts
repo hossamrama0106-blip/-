@@ -21,12 +21,37 @@ import {
   type LiveStatus,
   type NotificationItem,
   type PointEntry,
+  type HistoryItem,
   type ReplyReview,
   type Screenshot,
   type ShiftSession,
+  type TimelineEvent,
   type Violation,
 } from "@khiam/shared";
 import { hub } from "./realtime";
+import { notifyNtfy, pushViolationToSheet } from "./integrations";
+
+interface Config {
+  googleSheetWebhook: string;
+  ntfyTopic: string;
+}
+
+function categoryOf(title: string): string {
+  const t = (title || "").toLowerCase();
+  if (/(business\.facebook|whatsapp|operix|instagram\/direct|meta business|الوارد|محادثة|تعليق)/.test(t)) return "work";
+  if (/(youtube|tiktok|twitter|x\.com|snapchat|reddit|facebook|instagram)/.test(t)) return "social";
+  if (/(game|لعب|steam|valorant|cs2|pubg|league|minecraft|roblox|poki)/.test(t)) return "games";
+  if (/(netflix|shahid|movie|film|مسلسل|فيلم|anime|spotify)/.test(t)) return "entertainment";
+  return "other";
+}
+
+function describeActivity(l: LiveStatus): string {
+  if (l.metaFocused === false) return `خارج العمل: ${l.currentWindow || "تبويب آخر"}`;
+  if (l.typing && l.currentConversation) return `يكتب الآن في محادثة ${l.currentConversation}`;
+  if (l.currentConversation) return `في محادثة ${l.currentConversation}`;
+  if (l.typing) return "يكتب الآن";
+  return l.currentWindow ? `في: ${l.currentWindow}` : "—";
+}
 
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;
 const nowIso = () => new Date().toISOString();
@@ -46,10 +71,13 @@ function freshLive(employeeId: string): LiveStatus {
     lastOpenedMsgAt: null,
     currentWindow: null,
     currentConversation: null,
+    currentActivity: null,
+    metaFocused: true,
     extensionConnected: false,
     agentConnected: false,
     liveWatching: false,
     spotlight: false,
+    superMonitor: false,
   };
 }
 
@@ -69,6 +97,10 @@ class Store {
   alerts: Alert[] = [];
   screenshots: Screenshot[] = [];
   nightMode = false;
+  timeline: TimelineEvent[] = [];
+  history: HistoryItem[] = [];
+  private commands = new Map<string, string[]>();
+  config: Config = { googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "", ntfyTopic: process.env.NTFY_TOPIC || "" };
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
 
   constructor() {
@@ -155,7 +187,7 @@ class Store {
   // ---------- presence / heartbeat ----------
   heartbeat(
     employeeId: string,
-    patch: Partial<LiveStatus> & { mouseMoved?: boolean },
+    patch: Partial<LiveStatus> & { mouseMoved?: boolean; clientTime?: number },
   ): LiveStatus {
     const l = this.getLive(employeeId);
     const now = Date.now();
@@ -165,11 +197,36 @@ class Store {
     if (patch.agentConnected !== undefined) l.agentConnected = patch.agentConnected;
     if (patch.typing !== undefined) l.typing = patch.typing;
     if (patch.typingWpm !== undefined) l.typingWpm = patch.typingWpm;
-    if (patch.currentWindow !== undefined) l.currentWindow = patch.currentWindow;
+    if (patch.metaFocused !== undefined) l.metaFocused = patch.metaFocused;
     if (patch.currentConversation !== undefined) l.currentConversation = patch.currentConversation;
     if (patch.mouseMoved) l.lastMouseMoveAt = now;
+
+    // تغيّر النافذة/التبويب → سجّله في الخط الزمني (كل خطوة محفوظة)
+    if (patch.currentWindow !== undefined && patch.currentWindow !== l.currentWindow) {
+      const w = patch.currentWindow || "";
+      l.currentWindow = w;
+      if (w) this.addTimeline(employeeId, "window", `فتح: ${w}`, categoryOf(w));
+    }
+
     if (patch.status) l.status = patch.status;
     else l.status = this.deriveStatus(l);
+
+    l.currentActivity = describeActivity(l);
+
+    // كشف التلاعب بساعة الجهاز (نعتمد توقيت السيرفر دائماً)
+    if (
+      patch.clientTime &&
+      Math.abs(now - patch.clientTime) > 2 * 60 * 1000 &&
+      !this.recentViolation(employeeId, "تلاعب بساعة الجهاز", 30 * 60 * 1000)
+    ) {
+      this.addViolation({
+        employeeId,
+        type: "تلاعب بساعة الجهاز",
+        severity: ViolationSeverity.MEDIUM,
+        reason: `فرق توقيت جهاز الموظف ${Math.round(Math.abs(now - patch.clientTime) / 60000)} دقيقة عن السيرفر`,
+      });
+    }
+
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
     return l;
   }
@@ -187,7 +244,7 @@ class Store {
     return EmployeeStatus.ONLINE;
   }
 
-  setLiveFlags(employeeId: string, patch: Partial<Pick<LiveStatus, "liveWatching" | "spotlight">>): LiveStatus {
+  setLiveFlags(employeeId: string, patch: Partial<Pick<LiveStatus, "liveWatching" | "spotlight" | "superMonitor">>): LiveStatus {
     const l = this.getLive(employeeId);
     Object.assign(l, patch);
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
@@ -344,7 +401,7 @@ class Store {
   }
 
   // ---------- reviews / points ----------
-  addReview(input: { employeeId: string; conversationRef: string; verdict: string; score: number; aiNotes: string; sampleText: string }): ReplyReview {
+  addReview(input: { employeeId: string; conversationRef: string; verdict: string; score: number; aiNotes: string; sampleText: string; evidenceUrl?: string | null }): ReplyReview {
     const r: ReplyReview = {
       id: uid("rev"),
       employeeId: input.employeeId,
@@ -353,6 +410,7 @@ class Store {
       score: input.score,
       aiNotes: input.aiNotes,
       sampleText: input.sampleText,
+      evidenceUrl: input.evidenceUrl ?? null,
       at: nowIso(),
       approvedBy: null,
     };
@@ -370,7 +428,7 @@ class Store {
   }
 
   // ---------- violations ----------
-  addViolation(input: { employeeId: string; type: string; severity?: string; reason: string; screenshotUrl?: string | null }): Violation {
+  addViolation(input: { employeeId: string; type: string; severity?: string; reason: string; screenshotUrl?: string | null; imageUrl?: string | null; link?: string | null }): Violation {
     const v: Violation = {
       id: uid("vio"),
       employeeId: input.employeeId,
@@ -378,12 +436,28 @@ class Store {
       severity: (input.severity as Violation["severity"]) ?? ViolationSeverity.MEDIUM,
       reason: input.reason,
       screenshotUrl: input.screenshotUrl ?? null,
+      imageUrl: input.imageUrl ?? null,
+      link: input.link ?? null,
       at: nowIso(),
       acknowledgedAt: null,
       reply: null,
     };
     this.violations.push(v);
     hub.broadcast(RealtimeEvent.VIOLATION, v);
+    // تكاملات خارجية (أفضل جهد بدون انتظار): جوجل شيت + تنبيه طوارئ للحرجة
+    const emp = this.findEmployee(v.employeeId);
+    void pushViolationToSheet(this.config.googleSheetWebhook, {
+      employee: emp?.name ?? v.employeeId,
+      code: emp?.code ?? "",
+      type: v.type,
+      severity: v.severity,
+      reason: v.reason,
+      link: v.link ?? "",
+      at: v.at,
+    });
+    if (v.severity === ViolationSeverity.HIGH) {
+      void notifyNtfy(this.config.ntfyTopic, `مخالفة: ${emp?.name ?? ""}`, `${v.type} — ${v.reason}`, 5);
+    }
     return v;
   }
   ackViolation(id: string, reply: string | null): Violation | null {
@@ -556,6 +630,52 @@ class Store {
     return { enabled: true, checked: this.employees.length, raised };
   }
 
+  // ---------- timeline / history / commands / config ----------
+  addTimeline(employeeId: string, kind: TimelineEvent["kind"], label: string, category: string): TimelineEvent {
+    const ev: TimelineEvent = { id: uid("tl"), employeeId, kind, label, category, at: nowIso() };
+    this.timeline.push(ev);
+    if (this.timeline.length > 3000) this.timeline.splice(0, this.timeline.length - 3000);
+    hub.broadcast("timeline", ev);
+    return ev;
+  }
+  timelineFor(employeeId: string, limit = 50): TimelineEvent[] {
+    return this.timeline.filter((e) => e.employeeId === employeeId).slice(-limit).reverse();
+  }
+  addHistory(employeeId: string, items: { url: string; title?: string; visitAt?: string }[]): number {
+    for (const it of (items || []).slice(0, 200)) {
+      this.history.push({
+        id: uid("hist"),
+        employeeId,
+        url: String(it.url || "").slice(0, 500),
+        title: String(it.title || "").slice(0, 200),
+        visitAt: it.visitAt || nowIso(),
+        at: nowIso(),
+      });
+    }
+    if (this.history.length > 5000) this.history.splice(0, this.history.length - 5000);
+    return (items || []).length;
+  }
+  historyFor(employeeId: string, limit = 100): HistoryItem[] {
+    return this.history.filter((h) => h.employeeId === employeeId).slice(-limit).reverse();
+  }
+  queueCommand(employeeId: string, cmd: string): void {
+    const arr = this.commands.get(employeeId) ?? [];
+    arr.push(cmd);
+    this.commands.set(employeeId, arr);
+  }
+  popCommands(employeeId: string): string[] {
+    const arr = this.commands.get(employeeId) ?? [];
+    if (arr.length) this.commands.set(employeeId, []);
+    return arr;
+  }
+  getConfig(): Config {
+    return { ...this.config };
+  }
+  setConfig(patch: Partial<Config>): Config {
+    Object.assign(this.config, patch);
+    return this.getConfig();
+  }
+
   // ---------- background tick ----------
   /** يعيد حساب الحالات ويطلق التنبيهات بناءً على أعمار الـ heartbeat */
   tick(): void {
@@ -617,6 +737,8 @@ class Store {
     cap(this.reviews, 500);
     cap(this.violations, 500);
     cap(this.points, 2000);
+    cap(this.timeline, 3000);
+    cap(this.history, 5000);
     // تنبيهات: احذف المحلولة الأقدم من ساعة واحتفظ بآخر 300
     this.alerts = this.alerts.filter((a) => !a.resolvedAt || now - new Date(a.resolvedAt).getTime() < 60 * 60 * 1000);
     cap(this.alerts, 300);
