@@ -8,6 +8,7 @@ interface DashState {
   loggedIn: boolean;
   adminId: string | null;
   liteMode: boolean;
+  nightMode: boolean;
 
   employees: Employee[];
   live: Record<string, LiveStatus>;
@@ -24,6 +25,7 @@ interface DashState {
   connect: () => void;
   select: (id: string | null) => void;
   setLite: (v: boolean) => void;
+  setNight: (v: boolean) => Promise<void>;
   refreshLeaderboard: () => Promise<void>;
 }
 
@@ -34,6 +36,7 @@ export const useDash = create<DashState>((set, get) => ({
   loggedIn: false,
   adminId: null,
   liteMode: false,
+  nightMode: false,
 
   employees: [],
   live: {},
@@ -61,6 +64,7 @@ export const useDash = create<DashState>((set, get) => ({
       alerts: snap.alerts,
       violations: snap.violations,
       notifications: snap.notifications,
+      nightMode: snap.nightMode,
     });
   },
 
@@ -129,6 +133,12 @@ export const useDash = create<DashState>((set, get) => ({
 
   select: (id) => set({ selectedId: id }),
   setLite: (v) => set({ liteMode: v }),
+  async setNight(v) {
+    try {
+      await api.setNightMode(v);
+    } catch {}
+    set({ nightMode: v });
+  },
   async refreshLeaderboard() {
     const lb = await api.leaderboard();
     set({ leaderboard: lb });

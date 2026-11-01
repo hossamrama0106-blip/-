@@ -5,6 +5,7 @@ import { streamSSE } from "hono/streaming";
 import { DEV_ADMIN_CODE, Role, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
+import { aiMode, evaluateReply } from "./ai";
 
 export const app = new Hono();
 
@@ -153,7 +154,10 @@ app.get("/api/leaderboard", (c) => {
 });
 
 // ---------- reviews / points ----------
-app.get("/api/reviews", (c) => c.json(store.reviews));
+app.get("/api/reviews", (c) => {
+  const id = c.req.query("employeeId");
+  return c.json(id ? store.reviewsFor(id) : store.reviews.slice(-50).reverse());
+});
 app.post("/api/reviews", async (c) => {
   const body = await c.req.json();
   return c.json(store.addReview(body), 201);
@@ -162,6 +166,30 @@ app.get("/api/points", (c) => c.json(store.points));
 app.post("/api/points", async (c) => {
   const body = await c.req.json<{ employeeId: string; delta: number; reason: string }>();
   return c.json(store.addPoint({ ...body, source: "manual" }), 201);
+});
+
+// ---------- AI (تقييم الردود + الرادار الليلي) ----------
+app.get("/api/ai/status", (c) => c.json({ mode: aiMode(), nightMode: store.nightMode }));
+app.post("/api/ai/evaluate", async (c) => {
+  const body = await c.req.json<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[] }>();
+  const result = await evaluateReply({ messages: body.messages, conversationRef: body.conversationRef });
+  const review = store.addReview({
+    employeeId: body.employeeId,
+    conversationRef: body.conversationRef || "—",
+    verdict: result.verdict,
+    score: result.score,
+    aiNotes: result.notes,
+    sampleText: (body.messages || []).map((m) => `${m.role}: ${m.text}`).join("\n").slice(0, 400),
+  });
+  if (result.dealAtRisk) {
+    store.raiseAlert({ employeeId: body.employeeId, kind: "deal_at_risk", severity: "high", message: "أوردر محتمل يضيع — تدخّل الآن" });
+  }
+  return c.json({ review, result }, 201);
+});
+app.get("/api/ai/night-mode", (c) => c.json({ enabled: store.nightMode }));
+app.post("/api/ai/night-mode", async (c) => {
+  const { enabled } = await c.req.json<{ enabled: boolean }>();
+  return c.json({ enabled: store.setNightMode(!!enabled) });
 });
 
 // ---------- violations ----------
@@ -243,6 +271,9 @@ app.get("/api/snapshot", (c) =>
     alerts: store.alerts.filter((a) => !a.resolvedAt),
     violations: store.violations.slice(-50),
     notifications: store.notifications.slice(-50),
+    reviews: store.reviews.slice(-30).reverse(),
+    nightMode: store.nightMode,
+    aiMode: aiMode(),
   }),
 );
 

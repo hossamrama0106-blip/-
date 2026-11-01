@@ -67,6 +67,7 @@ class Store {
   chat: ChatMessage[] = [];
   alerts: Alert[] = [];
   screenshots: Screenshot[] = [];
+  nightMode = false;
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
 
   constructor() {
@@ -503,6 +504,47 @@ class Store {
     a.resolvedAt = nowIso();
     hub.broadcast(RealtimeEvent.ALERT, a);
     return a;
+  }
+
+  // ---------- ai / reviews / night radar ----------
+  reviewsFor(employeeId: string, limit = 12): ReplyReview[] {
+    return this.reviews.filter((r) => r.employeeId === employeeId).slice(-limit).reverse();
+  }
+  private recentViolation(employeeId: string, type: string, ms = 5 * 60 * 1000): Violation | undefined {
+    return this.violations.find(
+      (v) => v.employeeId === employeeId && v.type === type && Date.now() - new Date(v.at).getTime() < ms,
+    );
+  }
+  setNightMode(on: boolean): boolean {
+    this.nightMode = on;
+    hub.broadcast("night_mode", { enabled: on });
+    return this.nightMode;
+  }
+  /** مسح آلي يصعّد الخمول/الترفيه إلى مخالفات ويطلق تنبيهات الضغط */
+  nightScan(): { enabled: boolean; checked: number; raised: number } {
+    if (!this.nightMode) return { enabled: false, checked: 0, raised: 0 };
+    const now = Date.now();
+    let raised = 0;
+    for (const e of this.employees) {
+      const l = this.getLive(e.id);
+      if (l.presence !== PresenceState.WORKING) continue;
+      if (l.lastMouseMoveAt && now - l.lastMouseMoveAt > 10 * 60 * 1000 && !this.recentViolation(e.id, "خمول ليلي طويل")) {
+        this.addViolation({ employeeId: e.id, type: "خمول ليلي طويل", severity: ViolationSeverity.HIGH, reason: "خمول أكثر من 10 دقائق (رادار ليلي)" });
+        raised++;
+      }
+      if (
+        (l.status === EmployeeStatus.GAMES || l.status === EmployeeStatus.SOCIAL || l.status === EmployeeStatus.ENTERTAINMENT) &&
+        !this.recentViolation(e.id, "ترفيه وقت العمل")
+      ) {
+        this.addViolation({ employeeId: e.id, type: "ترفيه وقت العمل", severity: ViolationSeverity.MEDIUM, reason: `فتح ${l.status} أثناء الشيفت (رادار ليلي)` });
+        raised++;
+      }
+    }
+    if (this.inbox.unreadMessages >= Thresholds.QUEUE_PRESSURE) {
+      this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `رادار ليلي: ${this.inbox.unreadMessages} رسالة متراكمة` });
+      raised++;
+    }
+    return { enabled: true, checked: this.employees.length, raised };
   }
 
   // ---------- background tick ----------

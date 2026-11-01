@@ -2,6 +2,16 @@
 // يُفعّل بـ SIMULATE=1 (افتراضي في التطوير). أوقفه بـ SIMULATE=0.
 import { ActivityType, BreakType, Channel, EmployeeStatus } from "@khiam/shared";
 import { store } from "./store";
+import { evaluateLocal } from "./ai";
+
+const SAMPLE_CONVOS: { role: "customer" | "agent"; text: string }[][] = [
+  [{ role: "customer", text: "السلام عليكم، القميص ده متوفر مقاس L؟" }, { role: "agent", text: "وعليكم السلام أهلاً بحضرتك 😊 أيوة متوفر L، تحب نجهزه؟" }],
+  [{ role: "customer", text: "بكام الهودي ده والتوصيل كام؟" }, { role: "agent", text: "الهودي 450 جنيه والتوصيل 60 للقاهرة 👍" }],
+  [{ role: "customer", text: "ممكن اعرف الخامة إيه؟" }, { role: "agent", text: "قطن" }],
+  [{ role: "customer", text: "عايز اطلب الجاكيت ده مقاس XL" }, { role: "agent", text: "" }],
+  [{ role: "customer", text: "في عروض النهاردة؟" }, { role: "agent", text: "لأ مفيش" }],
+  [{ role: "customer", text: "المنتج ده حلو قوي، سعره كام؟" }, { role: "agent", text: "تسلم ذوقك 🙏 سعره 299 جنيه ومتوفر كل المقاسات" }],
+];
 
 const CHANNELS = [Channel.MESSENGER, Channel.INSTAGRAM, Channel.WHATSAPP, Channel.COMMENTS];
 const WINDOWS = [
@@ -53,18 +63,19 @@ export function startSimulator(): void {
         store.addActivity({ employeeId: e.id, type, channel: pick(CHANNELS), ref: `ref_${Math.floor(Math.random() * 9999)}` });
       }
 
-      // تقييم AI عشوائي (محاكاة Groq)
+      // تقييم الردود بالمُقيّم (heuristic محلي الآن، Groq عند توفّر المفتاح)
       if (chance(0.06)) {
-        const r = Math.random();
-        const verdict = r < 0.55 ? "good" : r < 0.8 ? "ok" : "bad";
+        const convo = pick(SAMPLE_CONVOS);
+        const ev = evaluateLocal({ messages: convo });
         store.addReview({
           employeeId: e.id,
           conversationRef: `عميل #${100 + Math.floor(Math.random() * 400)}`,
-          verdict,
-          score: verdict === "good" ? 85 + Math.floor(Math.random() * 15) : verdict === "ok" ? 60 + Math.floor(Math.random() * 20) : 20 + Math.floor(Math.random() * 30),
-          aiNotes: verdict === "bad" ? "رد مقتضب ولم يجب على سؤال العميل" : "رد واضح ومهذب",
-          sampleText: "— عايز المقاس ده متوفر؟\n— اهلا بحضرتك، تمام متوفر 👍",
+          verdict: ev.verdict,
+          score: ev.score,
+          aiNotes: ev.notes,
+          sampleText: convo.map((m) => `${m.role === "agent" ? "الموظف" : "العميل"}: ${m.text}`).join("\n"),
         });
+        if (ev.dealAtRisk) store.raiseAlert({ employeeId: e.id, kind: "deal_at_risk", severity: "high", message: "أوردر محتمل يضيع في محادثة الموظف" });
       }
     }
 

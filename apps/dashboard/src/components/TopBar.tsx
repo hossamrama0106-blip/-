@@ -2,13 +2,15 @@ import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, alerts } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, alerts } = useDash(useShallow((s) => ({
     connected: s.connected,
     inbox: s.inbox,
     live: s.live,
     employees: s.employees,
     liteMode: s.liteMode,
     setLite: s.setLite,
+    nightMode: s.nightMode,
+    setNight: s.setNight,
     alerts: s.alerts,
   })));
 
@@ -32,8 +34,17 @@ export default function TopBar() {
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
 
       <button
+        onClick={() => setNight(!nightMode)}
+        title="الرادار الليلي الآلي"
+        className={`mr-2 text-sm border rounded-lg px-3 py-2 transition ${
+          nightMode ? "bg-brand-500/20 border-brand-400 text-brand-400" : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
+        }`}
+      >
+        🌙 {nightMode ? "الرادار مفعّل" : "رادار ليلي"}
+      </button>
+      <button
         onClick={() => setLite(!liteMode)}
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+        className="text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
       >
         {liteMode ? "الوضع الكامل" : "الوضع البسيط"}
       </button>

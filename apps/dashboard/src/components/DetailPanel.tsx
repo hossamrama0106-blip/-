@@ -17,10 +17,15 @@ export default function DetailPanel() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [shot, setShot] = useState<{ dataUrl: string; at: string; width: number } | null>(null);
+  const [reviews, setReviews] = useState<Array<{ id: string; verdict: string; score: number; aiNotes: string; conversationRef: string }>>([]);
 
   useEffect(() => {
     setShot(null);
-    if (selectedId) api.latestScreenshot(selectedId).then(setShot).catch(() => {});
+    setReviews([]);
+    if (selectedId) {
+      api.latestScreenshot(selectedId).then(setShot).catch(() => {});
+      api.reviewsFor(selectedId).then(setReviews).catch(() => {});
+    }
   }, [selectedId]);
 
   if (!selectedId) return null;
@@ -121,6 +126,25 @@ export default function DetailPanel() {
               {emp.active ? "تعطيل الحساب" : "تفعيل الحساب"}
             </button>
           </div>
+        </Section>
+
+        {/* تقييم الردود بالذكاء الاصطناعي */}
+        <Section title="تقييم الردود (AI)">
+          {reviews.length === 0 ? (
+            <div className="text-xs text-slate-500">لا توجد تقييمات بعد.</div>
+          ) : (
+            <div className="space-y-1.5">
+              {reviews.slice(0, 6).map((r) => (
+                <div key={r.id} className="flex items-start gap-2 bg-ink-850 border border-ink-800 rounded-lg p-2">
+                  <span className="text-sm leading-5">{r.verdict === "good" ? "🟢" : r.verdict === "ok" ? "🟡" : "🔴"}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-200">{r.aiNotes}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{r.conversationRef} · {r.score}/100</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </Section>
 
         {/* آخر لقطة شاشة */}

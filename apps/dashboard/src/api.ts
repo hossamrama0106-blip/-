@@ -42,6 +42,17 @@ export interface Leaderboard {
   highlights: Record<string, string | null>;
 }
 
+export interface ReviewRow {
+  id: string;
+  employeeId: string;
+  conversationRef: string;
+  verdict: "good" | "ok" | "bad";
+  score: number;
+  aiNotes: string;
+  sampleText: string;
+  at: string;
+}
+
 export interface Snapshot {
   employees: Employee[];
   live: Record<string, LiveStatus>;
@@ -50,6 +61,9 @@ export interface Snapshot {
   alerts: Alert[];
   violations: Violation[];
   notifications: NotificationItem[];
+  reviews: ReviewRow[];
+  nightMode: boolean;
+  aiMode: string;
 }
 
 export const api = {
@@ -77,4 +91,9 @@ export const api = {
   resolveAlert: (id: string) => http(`/alerts/${id}/resolve`, { method: "POST" }),
   latestScreenshot: (employeeId: string) =>
     http<{ dataUrl: string; at: string; width: number; height: number } | null>(`/screenshots/latest?employeeId=${encodeURIComponent(employeeId)}`),
+  reviewsFor: (employeeId: string) => http<ReviewRow[]>(`/reviews?employeeId=${encodeURIComponent(employeeId)}`),
+  setNightMode: (enabled: boolean) =>
+    http<{ enabled: boolean }>("/ai/night-mode", { method: "POST", body: JSON.stringify({ enabled }) }),
+  evaluate: (data: { employeeId: string; conversationRef?: string; messages: { role: string; text: string }[] }) =>
+    http("/ai/evaluate", { method: "POST", body: JSON.stringify(data) }),
 };
