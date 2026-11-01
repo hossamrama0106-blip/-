@@ -24,6 +24,21 @@ app.get("/api/health", (c) =>
   }),
 );
 
+// ---------- test page (لمعاينة شريط الإكستنشن بدون ميتا) ----------
+app.get("/", (c) => c.html(`<!doctype html><meta charset=utf-8><body style="font-family:sans-serif;background:#0f141c;color:#e5e7eb;padding:40px"><h2>Khiam backend شغّال ✅</h2><p>الداشبورد: <a style=color:#818cf8 href="http://localhost:5173">localhost:5173</a> · صفحة تجربة الإكستنشن: <a style=color:#818cf8 href="/test">/test</a></p>`));
+app.get("/test", (c) =>
+  c.html(`<!doctype html><html lang=ar dir=rtl><head><meta charset=utf-8><title>Meta Business Suite — الوارد (تجربة)</title>
+  <style>body{font-family:Tahoma,sans-serif;background:#0b0f17;color:#e5e7eb;margin:0;padding:60px 24px}
+  .box{max-width:640px;margin:auto;background:#111827;border:1px solid #273243;border-radius:12px;padding:20px}
+  textarea{width:100%;height:90px;background:#1b2432;border:1px solid #273243;border-radius:8px;color:#fff;padding:10px;font-size:14px}
+  h3{color:#fff}</style></head><body>
+  <div class=box>
+  <h3>صفحة تجربة — محاكاة صندوق وارد</h3>
+  <p>سجّل الدخول من أيقونة الإضافة (كود مثل K1002)، هيظهر الشريط فوق. اكتب هنا واضغط Enter = يترن ويتسجّل رد.</p>
+  <textarea placeholder="اكتب ردًا واضغط Enter…"></textarea>
+  </div></body></html>`),
+);
+
 // ---------- auth ----------
 app.post("/api/auth/login", async (c) => {
   const { code, whatsapp } = await c.req.json<{ code: string; whatsapp?: string }>();

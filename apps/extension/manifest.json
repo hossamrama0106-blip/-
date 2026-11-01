@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "Khiam Ops — متابعة الموظف",
+  "version": "0.1.0",
+  "description": "شريط متابعة فريق خدمة العملاء داخل Meta Business Suite / WhatsApp / Instagram / Operix.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "http://localhost:8787/*",
+    "https://business.facebook.com/*",
+    "https://web.whatsapp.com/*",
+    "https://www.instagram.com/*",
+    "https://*.operix.co/*"
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html", "default_title": "Khiam Ops — تسجيل الدخول" },
+  "content_scripts": [
+    {
+      "matches": [
+        "https://business.facebook.com/*",
+        "https://web.whatsapp.com/*",
+        "https://www.instagram.com/*",
+        "https://*.operix.co/*",
+        "http://localhost:8787/*"
+      ],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ]
+}
