@@ -1,11 +1,14 @@
 // Service worker — كل الاتصال بالـ backend يمرّ من هنا (عشان CSP بتاعة المواقع متمنعش fetch).
 // محلياً يتكلم مع http://localhost:8787 ؛ لاحقاً يتغيّر لعنوان Cloudflare Worker.
 const BACKEND = "http://localhost:8787";
+let authToken = "";
 
 async function api(path, method = "GET", body) {
+  const headers = { "content-type": "application/json" };
+  if (authToken) headers.authorization = "Bearer " + authToken;
   const res = await fetch(BACKEND + path, {
     method,
-    headers: { "content-type": "application/json" },
+    headers,
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -28,6 +31,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
       const s = await getSession();
+      authToken = (s && s.token) || "";
       const reqId = () => {
         if (!s) throw new Error("not_logged_in");
         return s.employeeId;
@@ -42,7 +46,9 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             name: r.employee.name,
             code: r.employee.code,
             consentRequired: !!r.consentRequired,
+            token: r.token,
           });
+          authToken = r.token || "";
           return sendResponse({ ok: true, data: r });
         }
         case "consent": {

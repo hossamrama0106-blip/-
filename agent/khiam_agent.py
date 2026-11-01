@@ -56,9 +56,15 @@ def load_config():
     return cfg
 
 
+TOKEN = ""
+
+
 def http_json(url, method="GET", body=None, timeout=8):
     data = json.dumps(body).encode("utf-8") if body is not None else None
-    req = urllib.request.Request(url, data=data, method=method, headers={"content-type": "application/json"})
+    headers = {"content-type": "application/json"}
+    if TOKEN:
+        headers["authorization"] = "Bearer " + TOKEN
+    req = urllib.request.Request(url, data=data, method=method, headers=headers)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read().decode("utf-8"))
 
@@ -203,6 +209,8 @@ def main():
     if not emp:
         print("كود غير صحيح")
         sys.exit(1)
+    global TOKEN
+    TOKEN = res.get("token") or ""
     eid = emp["id"]
     print(f"مسجّل: {emp.get('name')} ({eid})")
 

@@ -60,6 +60,7 @@ class Store {
   breaks: BreakEntry[] = [];
   activities: ActivityEvent[] = [];
   counters = new Map<string, CountersDaily>(); // key: `${employeeId}:${date}`
+  private openNoReplyTimes = new Map<string, number[]>(); // لكاشف التهرب من العملاء
   reviews: ReplyReview[] = [];
   points: PointEntry[] = [];
   violations: Violation[] = [];
@@ -284,6 +285,14 @@ class Store {
       c.orders += 1;
     } else if (ev.type === ActivityType.OPEN_NO_REPLY) {
       c.openNoReply += 1;
+      // كاشف "التهرب من عميل": فتح وقرأ وخرج بدون رد عدة مرات خلال نافذة قصيرة
+      const arr = (this.openNoReplyTimes.get(input.employeeId) ?? []).filter((t) => Date.now() - t < 10 * 60 * 1000);
+      arr.push(Date.now());
+      this.openNoReplyTimes.set(input.employeeId, arr);
+      if (arr.length >= Thresholds.CHERRY_PICK_LIMIT && !this.recentViolation(input.employeeId, "تهرب من عميل")) {
+        this.addViolation({ employeeId: input.employeeId, type: "تهرب من عميل", severity: ViolationSeverity.MEDIUM, reason: `فتح ${arr.length} محادثات وخرج بدون رد خلال 10 دقائق` });
+        this.raiseAlert({ employeeId: input.employeeId, kind: "cherry_pick", severity: ViolationSeverity.MEDIUM, message: "تهرب من عميل — فتح وقرأ وخرج بدون رد" });
+      }
     }
 
     hub.broadcast(RealtimeEvent.ACTIVITY, ev);
@@ -590,6 +599,31 @@ class Store {
         severity: ViolationSeverity.HIGH,
         message: `ضغط عالي: ${this.inbox.unreadMessages} رسالة غير مقروءة`,
       });
+    }
+  }
+
+  // ---------- auto-purge (تنظيف ذاتي للذاكرة — الوعد في الخطة: حذف الروتيني بعد 48 ساعة) ----------
+  purge(): void {
+    const now = Date.now();
+    const cut = now - Thresholds.PURGE_ROUTINE_MS;
+    if (this.activities.length > 2000) {
+      this.activities = this.activities.filter((a) => new Date(a.at).getTime() > cut).slice(-5000);
+    }
+    const cap = (arr: unknown[], n: number) => {
+      if (arr.length > n) arr.splice(0, arr.length - n);
+    };
+    cap(this.chat, 1000);
+    cap(this.notifications, 500);
+    cap(this.reviews, 500);
+    cap(this.violations, 500);
+    cap(this.points, 2000);
+    // تنبيهات: احذف المحلولة الأقدم من ساعة واحتفظ بآخر 300
+    this.alerts = this.alerts.filter((a) => !a.resolvedAt || now - new Date(a.resolvedAt).getTime() < 60 * 60 * 1000);
+    cap(this.alerts, 300);
+    // عدّادات: احتفظ بآخر 3 أيام فقط
+    const keep = new Set([0, 1, 2].map((d) => new Date(now - d * 86400000).toISOString().slice(0, 10)));
+    for (const key of [...this.counters.keys()]) {
+      if (!keep.has(key.split(":")[1])) this.counters.delete(key);
     }
   }
 }

@@ -6,12 +6,67 @@ import { DEV_ADMIN_CODE, Role, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
+import { signToken, verifyToken } from "./auth";
 
 export const app = new Hono();
 
-app.use("*", cors());
+app.use(
+  "*",
+  cors({
+    origin: (o) => (o && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : ""),
+    allowHeaders: ["content-type", "authorization"],
+  }),
+);
 
-const token = (id: string) => Buffer.from(`${id}:${Date.now()}`).toString("base64url");
+app.onError((err, c) => c.json({ error: String((err as any)?.message || err) }, 500));
+app.notFound((c) => c.json({ error: "not_found" }, 404));
+
+// بوّابة المصادقة والصلاحيات لكل /api (ما عدا health و login)
+const OPEN = new Set(["/api/health", "/api/auth/login"]);
+function bearer(c: any): string {
+  const h = c.req.header("authorization") || "";
+  if (h.startsWith("Bearer ")) return h.slice(7);
+  return c.req.query("token") || "";
+}
+app.use("/api/*", async (c, next) => {
+  const path = new URL(c.req.url).pathname;
+  if (OPEN.has(path)) return next();
+  const id = verifyToken(bearer(c));
+  if (!id) return c.json({ error: "unauthorized" }, 401);
+  const m = c.req.method;
+
+  const adminOnly =
+    path.startsWith("/api/employees") ||
+    (path.startsWith("/api/screenshots") && m === "GET") ||
+    path === "/api/snapshot" ||
+    path === "/api/leaderboard" ||
+    path === "/api/counters" ||
+    path.startsWith("/api/alerts") ||
+    path === "/api/ai/status" ||
+    (path === "/api/violations" && m === "POST") ||
+    (path === "/api/points" && m === "POST") ||
+    (path === "/api/notifications" && m === "POST") ||
+    (path === "/api/inbox" && m === "POST") ||
+    (path === "/api/ai/night-mode" && m === "POST") ||
+    (path === "/api/reviews" && !c.req.query("employeeId"));
+  if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
+
+  if (id.role !== "admin") {
+    const SELF_POST = new Set([
+      "/api/presence", "/api/activity", "/api/shift/start", "/api/shift/end",
+      "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots",
+    ]);
+    if (m === "POST" && SELF_POST.has(path)) {
+      let body: any = {};
+      try { body = await c.req.json(); } catch {}
+      if (body.employeeId && body.employeeId !== id.id) return c.json({ error: "forbidden" }, 403);
+    }
+    if (m === "GET" && path === "/api/notifications" && c.req.query("to") !== id.id) return c.json({ error: "forbidden" }, 403);
+    if (m === "GET" && path === "/api/chat" && c.req.query("me") !== id.id) return c.json({ error: "forbidden" }, 403);
+    if (m === "GET" && path === "/api/reviews" && c.req.query("employeeId") !== id.id) return c.json({ error: "forbidden" }, 403);
+  }
+  await next();
+});
 
 // ---------- health / system check ----------
 app.get("/api/health", (c) =>
@@ -45,7 +100,7 @@ app.post("/api/auth/login", async (c) => {
   const { code, whatsapp } = await c.req.json<{ code: string; whatsapp?: string }>();
   if (code?.toUpperCase() === DEV_ADMIN_CODE) {
     const admin = store.employees.find((e) => e.role === Role.ADMIN) ?? store.employees[0];
-    const result: LoginResult = { token: token("admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
+    const result: LoginResult = { token: signToken(admin.id, "admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
     return c.json(result);
   }
   const emp = store.findByCode(code);
@@ -53,7 +108,7 @@ app.post("/api/auth/login", async (c) => {
   if (!emp.active) return c.json({ error: "الحساب معطّل" }, 403);
   if (whatsapp && !emp.whatsapp) store.updateEmployee(emp.id, { whatsapp });
   const result: LoginResult = {
-    token: token(emp.id),
+    token: signToken(emp.id, "employee"),
     employee: emp,
     consentRequired: emp.consentAt == null,
   };
@@ -279,8 +334,9 @@ app.get("/api/snapshot", (c) =>
 
 // ---------- realtime SSE ----------
 app.get("/api/stream", (c) => {
-  const role = (c.req.query("role") as "admin" | "employee") ?? "admin";
-  const employeeId = c.req.query("employeeId") ?? undefined;
+  const id = verifyToken(bearer(c));
+  const role = id?.role === "admin" ? "admin" : "employee";
+  const employeeId = id?.id;
   return streamSSE(c, async (stream) => {
     const id = crypto.randomUUID();
     const queue: string[] = [];
@@ -291,6 +347,7 @@ app.get("/api/stream", (c) => {
       role,
       employeeId,
       send: (data) => {
+        if (queue.length > 1000) queue.shift(); // حد أقصى للعميل البطيء (يمنع تضخّم الذاكرة)
         queue.push(data);
         wake?.();
       },

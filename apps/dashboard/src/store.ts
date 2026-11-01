@@ -1,7 +1,7 @@
 // حالة الداشبورد + الاتصال اللحظي (SSE)
 import { create } from "zustand";
 import { RealtimeEvent, type Alert, type Employee, type InboxSnapshot, type LiveStatus, type NotificationItem, type Violation } from "@khiam/shared";
-import { api, type Leaderboard, type Snapshot } from "./api";
+import { api, getToken, setToken, type Leaderboard, type Snapshot } from "./api";
 
 interface DashState {
   connected: boolean;
@@ -49,6 +49,7 @@ export const useDash = create<DashState>((set, get) => ({
 
   async login(code: string) {
     const res: any = await api.login(code);
+    setToken(res.token);
     set({ loggedIn: true, adminId: res.employee?.id ?? "admin" });
     await get().loadSnapshot();
     get().connect();
@@ -70,8 +71,13 @@ export const useDash = create<DashState>((set, get) => ({
 
   connect() {
     if (es) es.close();
-    es = new EventSource("/api/stream?role=admin");
-    es.addEventListener("hello", () => set({ connected: true }));
+    es = new EventSource("/api/stream?token=" + encodeURIComponent(getToken()));
+    es.addEventListener("hello", () => {
+      const wasConnected = get().connected;
+      set({ connected: true });
+      // عند إعادة الاتصال: أعد تحميل اللقطة الكاملة لتفادي البيانات القديمة
+      if (!wasConnected) get().loadSnapshot().catch(() => {});
+    });
     es.onerror = () => set({ connected: false });
 
     const onStatus = (e: MessageEvent) => {

@@ -15,6 +15,9 @@ setInterval(() => {
   if (r.raised) console.log(`🌙 رادار ليلي: صعّد ${r.raised} مخالفة/تنبيه`);
 }, 20000);
 
+// التنظيف الذاتي كل دقيقة (يمنع تضخّم الذاكرة)
+setInterval(() => store.purge(), 60000);
+
 startSimulator();
 
 serve({ fetch: app.fetch, port: PORT }, (info) => {

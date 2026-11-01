@@ -11,11 +11,18 @@ import type {
 
 const BASE = "/api";
 
+let AUTH = "";
+export function setToken(t: string) {
+  AUTH = t;
+}
+export function getToken() {
+  return AUTH;
+}
+
 async function http<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, {
-    headers: { "content-type": "application/json" },
-    ...init,
-  });
+  const headers: Record<string, string> = { "content-type": "application/json", ...((init?.headers as Record<string, string>) ?? {}) };
+  if (AUTH) headers.authorization = `Bearer ${AUTH}`;
+  const res = await fetch(`${BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
     throw new Error((body as any).error ?? `HTTP ${res.status}`);
