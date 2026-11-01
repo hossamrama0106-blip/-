@@ -1,0 +1,210 @@
+import { useState } from "react";
+import { NotificationType } from "@khiam/shared";
+import { useShallow } from "zustand/react/shallow";
+import { useDash } from "../store";
+import { api } from "../api";
+import { PRESENCE_LABEL, STATUS_META, clockAt, fmtGap, timeAgo } from "../lib/ui";
+
+export default function DetailPanel() {
+  const { selectedId, employees, live, leaderboard, adminId, select } = useDash(useShallow((s) => ({
+    selectedId: s.selectedId,
+    employees: s.employees,
+    live: s.live,
+    leaderboard: s.leaderboard,
+    adminId: s.adminId,
+    select: s.select,
+  })));
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState<string | null>(null);
+
+  if (!selectedId) return null;
+  const emp = employees.find((e) => e.id === selectedId);
+  if (!emp) return null;
+  const l = live[emp.id];
+  const row = leaderboard?.rows.find((r) => r.employeeId === emp.id);
+  const meta = STATUS_META[l?.status ?? "offline"] ?? STATUS_META.offline;
+
+  const act = async (key: string, fn: () => Promise<any>) => {
+    setBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const send = (type: string, body: string) =>
+    api.sendNotification({ type, from: adminId ?? "admin", to: emp.id, body });
+
+  return (
+    <div className="fixed inset-0 z-40 flex" onClick={() => select(null)}>
+      <div className="flex-1 bg-black/50" />
+      <div
+        className="w-full max-w-md bg-ink-900 border-r border-ink-700 h-full overflow-y-auto p-5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full grid place-items-center text-white font-bold" style={{ background: emp.avatarColor }}>
+              {emp.name.charAt(0)}
+            </div>
+            <div>
+              <div className="font-extrabold text-white text-lg flex items-center gap-2">
+                {emp.name} {emp.superMonitor && <span title="مراقبة فائقة">🎯</span>}
+              </div>
+              <div className="text-sm" style={{ color: meta.dot }}>{meta.label}</div>
+            </div>
+          </div>
+          <button onClick={() => select(null)} className="text-slate-400 hover:text-white text-2xl leading-none">×</button>
+        </div>
+
+        {/* الحالة اللحظية */}
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <Info label="الحضور" value={PRESENCE_LABEL[l?.presence ?? "not_started"]} />
+          <Info label="المحادثة الحالية" value={l?.currentConversation ?? "—"} />
+          <Info label="آخر رد" value={timeAgo(l?.lastReplyAt ?? null)} />
+          <Info label="آخر رسالة فتحها" value={timeAgo(l?.lastOpenedMsgAt ?? null)} />
+          <Info label="النافذة الحالية" value={l?.currentWindow ?? "—"} />
+          <Info label="سرعة الكتابة" value={`${l?.typingWpm ?? 0} ك/د`} />
+        </div>
+
+        {/* العدّادات */}
+        <div className="grid grid-cols-4 gap-2 mb-5">
+          <Counter label="رسائل" value={row?.msgs ?? 0} />
+          <Counter label="تعليقات" value={row?.comments ?? 0} />
+          <Counter label="أوردرات" value={row?.orders ?? 0} />
+          <Counter label="نقاط" value={row?.points ?? 0} accent={(row?.points ?? 0) >= 0 ? "good" : "bad"} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
+          <Info label="متوسط الفجوة بين الردود" value={fmtGap(row?.avgGapMs ?? null)} />
+          <Info label="فتح ولم يرد" value={String(row?.openNoReply ?? 0)} />
+        </div>
+
+        {/* أدوات الرقابة */}
+        <Section title="الرقابة">
+          <div className="grid grid-cols-2 gap-2">
+            <Toggle
+              on={!!l?.liveWatching}
+              busy={busy === "live"}
+              onLabel="إيقاف لايف شبح"
+              offLabel="لايف (مراقبة)"
+              onClick={() => act("live", () => api.setFlags(emp.id, { liveWatching: !l?.liveWatching }))}
+            />
+            <Toggle
+              on={!!l?.spotlight}
+              busy={busy === "spot"}
+              onLabel="إطفاء عين الرقابة"
+              offLabel="عين الرقابة (علني)"
+              danger
+              onClick={() => act("spot", () => api.setFlags(emp.id, { spotlight: !l?.spotlight }))}
+            />
+            <Toggle
+              on={emp.superMonitor}
+              busy={busy === "super"}
+              onLabel="إيقاف مراقبة فائقة"
+              offLabel="مراقبة فائقة"
+              onClick={() => act("super", () => api.setFlags(emp.id, { superMonitor: !emp.superMonitor }))}
+            />
+            <button
+              disabled={busy === "active"}
+              onClick={() => act("active", () => api.updateEmployee(emp.id, { active: !emp.active }))}
+              className="text-sm rounded-lg py-2 px-3 bg-ink-800 hover:bg-ink-700 border border-ink-700 text-slate-200"
+            >
+              {emp.active ? "تعطيل الحساب" : "تفعيل الحساب"}
+            </button>
+          </div>
+        </Section>
+
+        {/* إشعارات ورسائل */}
+        <Section title="إرسال للموظف">
+          <input
+            value={msg}
+            onChange={(e) => setMsg(e.target.value)}
+            placeholder="اكتب رسالة/إشعار…"
+            className="w-full bg-ink-850 border border-ink-700 rounded-lg px-3 py-2 text-white text-sm mb-2 outline-none focus:border-brand-400"
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <ActBtn label="إشعار عادي" onClick={() => act("notice", async () => { await send(NotificationType.NOTICE, msg || "انتبه من فضلك"); setMsg(""); })} />
+            <ActBtn label="رسالة للرد" onClick={() => act("message", async () => { await send(NotificationType.MESSAGE, msg || "محتاج ردك"); setMsg(""); })} />
+            <ActBtn label="تنبيه صوتي" onClick={() => act("audio", () => send(NotificationType.BROADCAST_AUDIO, "🔊 بث صوتي"))} />
+          </div>
+        </Section>
+
+        {/* المخالفات والنقاط */}
+        <Section title="تقييم ومخالفات">
+          <div className="grid grid-cols-2 gap-2">
+            <ActBtn label="➕ نقطة خضراء" tone="good" onClick={() => act("plus", () => api.addPoint({ employeeId: emp.id, delta: 1, reason: "تقييم إداري" }))} />
+            <ActBtn label="➖ نقطة حمراء" tone="bad" onClick={() => act("minus", () => api.addPoint({ employeeId: emp.id, delta: -1, reason: "تقييم إداري" }))} />
+          </div>
+          <ActBtn
+            full
+            tone="bad"
+            label="تسجيل مخالفة"
+            onClick={() => act("vio", () => api.addViolation({ employeeId: emp.id, type: "مخالفة إدارية", severity: "medium", reason: msg || "مخالفة مسجّلة من الإدارة" }))}
+          />
+          <div className="text-[11px] text-slate-500 mt-2">
+            بدأ الشيفت: {clockAt(l?.lastReplyAt ?? null) === "—" ? "—" : "اليوم"} · الواتساب: <span dir="ltr">{emp.whatsapp}</span>
+          </div>
+        </Section>
+      </div>
+    </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div className="mb-5">
+      <div className="text-xs font-bold text-slate-400 mb-2 uppercase tracking-wide">{title}</div>
+      {children}
+    </div>
+  );
+}
+function Info({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-ink-850 border border-ink-800 rounded-lg px-3 py-2">
+      <div className="text-[11px] text-slate-500">{label}</div>
+      <div className="text-sm text-slate-100 truncate">{value}</div>
+    </div>
+  );
+}
+function Counter({ label, value, accent = "neutral" }: { label: string; value: number; accent?: "good" | "bad" | "neutral" }) {
+  const cls = accent === "good" ? "text-emerald-400" : accent === "bad" ? "text-red-400" : "text-white";
+  return (
+    <div className="bg-ink-850 border border-ink-800 rounded-lg py-2 text-center">
+      <div className={`text-lg font-extrabold leading-none ${cls}`}>{value}</div>
+      <div className="text-[10px] text-slate-500 mt-1">{label}</div>
+    </div>
+  );
+}
+function Toggle({ on, busy, onLabel, offLabel, onClick, danger }: { on: boolean; busy: boolean; onLabel: string; offLabel: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      disabled={busy}
+      onClick={onClick}
+      className={`text-sm rounded-lg py-2 px-3 border transition disabled:opacity-60 ${
+        on
+          ? danger
+            ? "bg-red-500/20 border-red-500 text-red-300"
+            : "bg-brand-500/20 border-brand-400 text-brand-400"
+          : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
+      }`}
+    >
+      {on ? onLabel : offLabel}
+    </button>
+  );
+}
+function ActBtn({ label, onClick, tone = "neutral", full, }: { label: string; onClick: () => void; tone?: "good" | "bad" | "neutral"; full?: boolean }) {
+  const cls =
+    tone === "good"
+      ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300 hover:bg-emerald-500/25"
+      : tone === "bad"
+        ? "bg-red-500/15 border-red-500/50 text-red-300 hover:bg-red-500/25"
+        : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200";
+  return (
+    <button onClick={onClick} className={`text-sm rounded-lg py-2 px-3 border transition ${cls} ${full ? "w-full mt-2" : ""}`}>
+      {label}
+    </button>
+  );
+}

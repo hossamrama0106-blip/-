@@ -1,0 +1,36 @@
+# Khiam Ops OS
+
+منظومة متابعة فريق خدمة العملاء (Meta Business Suite + Instagram + WhatsApp Web + Operix).
+مراقبة **معلنة بموافقة** (transparent / consent-based) — مش تجسس خفي. التفاصيل في [خطة-العمل.md](./خطة-العمل.md).
+
+## الهيكل (monorepo)
+
+```
+packages/
+  shared/      نموذج البيانات + الأنواع + ثوابت (مصدر الحقيقة للعقود بين كل الأطراف)
+apps/
+  backend/     Hono API — محلي الآن (in-memory)، لاحقاً → Cloudflare Worker + Supabase/Upstash
+  dashboard/   داشبورد الإدارة (Vite + React + Tailwind) — Cloudflare Pages لاحقاً
+  extension/   إكستنشن كروم (WXT) — محقون جوّه Meta/WhatsApp/Operix
+agent/         Windows Agent (Python) — شاشة/ماوس/نوافذ
+```
+
+## التشغيل المحلي
+
+```bash
+pnpm install
+pnpm backend      # يشغّل الـ API على http://localhost:8787
+pnpm dashboard    # يشغّل الداشبورد على http://localhost:5173
+pnpm extension    # يبني الإكستنشن للتحميل في كروم (dev)
+```
+
+> حالياً كل حاجة شغّالة محلياً ببيانات تجريبية (mock) في ذاكرة الـ backend — من غير أي حسابات خارجية.
+> لائحة اللي مطلوب منك لربط الخدمات الحقيقية: [المطلوب-منك.md](./المطلوب-منك.md).
+
+## المراحل
+
+- [x] النواة: الهيكل + الطبقة المشتركة + الـ backend المحلي
+- [ ] الوحدة 1: تسجيل الدخول + الشريط الثابت + أزرار الشيفت + الشات
+- [ ] الوحدة 2: العدّادات + الأداء + المقارنة
+- [ ] الوحدة 3: الرقابة + Windows Agent
+- [ ] الوحدة 4: الذكاء الاصطناعي + الوضع الليلي

@@ -1,0 +1,18 @@
+{
+  "name": "khiam-ops-os",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Khiam Ops OS — employee operations & performance monitoring for customer-service teams (transparent/consent-based).",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel dev",
+    "build": "pnpm -r build",
+    "backend": "pnpm --filter @khiam/backend dev",
+    "dashboard": "pnpm --filter @khiam/dashboard dev",
+    "extension": "pnpm --filter @khiam/extension dev",
+    "typecheck": "pnpm -r typecheck"
+  }
+}

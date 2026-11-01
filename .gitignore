@@ -1,0 +1,32 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# builds
+dist/
+build/
+.output/
+.wxt/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# python agent
+agent/.venv/
+agent/__pycache__/
+**/__pycache__/
+*.pyc
+
+# os / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# local data / logs
+*.log
+local-data/
+screenshots-local/
