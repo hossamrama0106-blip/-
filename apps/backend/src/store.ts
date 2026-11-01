@@ -22,6 +22,7 @@ import {
   type NotificationItem,
   type PointEntry,
   type ReplyReview,
+  type Screenshot,
   type ShiftSession,
   type Violation,
 } from "@khiam/shared";
@@ -65,6 +66,7 @@ class Store {
   notifications: NotificationItem[] = [];
   chat: ChatMessage[] = [];
   alerts: Alert[] = [];
+  screenshots: Screenshot[] = [];
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
 
   constructor() {
@@ -442,6 +444,33 @@ class Store {
     this.inbox = { unreadMessages, unreadComments, at: nowIso() };
     hub.broadcast(RealtimeEvent.COUNTERS_UPDATED, { inbox: this.inbox });
     return this.inbox;
+  }
+
+  // ---------- screenshots ----------
+  addScreenshot(input: { employeeId: string; dataUrl: string; width?: number; height?: number; isViolation?: boolean; ocrText?: string | null }): Screenshot {
+    const sc: Screenshot = {
+      id: uid("shot"),
+      employeeId: input.employeeId,
+      dataUrl: input.dataUrl,
+      width: input.width ?? 0,
+      height: input.height ?? 0,
+      isViolation: !!input.isViolation,
+      ocrText: input.ocrText ?? null,
+      at: nowIso(),
+    };
+    this.screenshots.push(sc);
+    // تنظيف ذاتي: احتفظ بآخر 60 لقطة فقط في الذاكرة
+    if (this.screenshots.length > 60) this.screenshots.splice(0, this.screenshots.length - 60);
+    return sc;
+  }
+  latestScreenshot(employeeId: string): Screenshot | null {
+    for (let i = this.screenshots.length - 1; i >= 0; i--) {
+      if (this.screenshots[i].employeeId === employeeId) return this.screenshots[i];
+    }
+    return null;
+  }
+  screenshotsFor(employeeId: string, limit = 12): Screenshot[] {
+    return this.screenshots.filter((s) => s.employeeId === employeeId).slice(-limit).reverse();
   }
 
   // ---------- alerts ----------

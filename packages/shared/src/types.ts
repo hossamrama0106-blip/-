@@ -168,6 +168,18 @@ export interface InboxSnapshot {
   at: ISODate;
 }
 
+/** لقطة شاشة (محلياً data URL؛ لاحقاً Cloudflare R2) */
+export interface Screenshot {
+  id: ID;
+  employeeId: ID;
+  dataUrl: string;
+  width: number;
+  height: number;
+  isViolation: boolean;
+  ocrText: string | null;
+  at: ISODate;
+}
+
 /** غلاف موحّد لأحداث الـ realtime */
 export interface RealtimeMessage<T = unknown> {
   event: string;

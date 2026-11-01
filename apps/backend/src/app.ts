@@ -217,6 +217,22 @@ app.post("/api/alerts/:id/resolve", (c) => {
   return a ? c.json(a) : c.json({ error: "not found" }, 404);
 });
 
+// ---------- screenshots ----------
+app.post("/api/screenshots", async (c) => {
+  const body = await c.req.json<{ employeeId: string; dataUrl: string; width?: number; height?: number; isViolation?: boolean; ocrText?: string | null }>();
+  if (!body.dataUrl || body.dataUrl.length > 700000) return c.json({ error: "invalid or too large" }, 400);
+  return c.json(store.addScreenshot(body), 201);
+});
+app.get("/api/screenshots", (c) => {
+  const id = c.req.query("employeeId");
+  if (!id) return c.json(store.screenshots.slice(-30).reverse());
+  return c.json(store.screenshotsFor(id));
+});
+app.get("/api/screenshots/latest", (c) => {
+  const id = c.req.query("employeeId") ?? "";
+  return c.json(store.latestScreenshot(id));
+});
+
 // ---------- snapshot (الحالة الكاملة لأول تحميل) ----------
 app.get("/api/snapshot", (c) =>
   c.json({

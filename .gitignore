@@ -17,6 +17,7 @@ build/
 # python agent
 agent/.venv/
 agent/__pycache__/
+agent/config.json
 **/__pycache__/
 *.pyc
 

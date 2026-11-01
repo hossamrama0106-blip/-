@@ -75,4 +75,6 @@ export const api = {
   addPoint: (data: { employeeId: string; delta: number; reason: string }) =>
     http("/points", { method: "POST", body: JSON.stringify(data) }),
   resolveAlert: (id: string) => http(`/alerts/${id}/resolve`, { method: "POST" }),
+  latestScreenshot: (employeeId: string) =>
+    http<{ dataUrl: string; at: string; width: number; height: number } | null>(`/screenshots/latest?employeeId=${encodeURIComponent(employeeId)}`),
 };

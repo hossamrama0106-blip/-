@@ -1,0 +1,9 @@
+{
+  "backend": "http://localhost:8787",
+  "code": "K1003",
+  "intervalSeconds": 10,
+  "allowCapture": false,
+  "captureIntervalSeconds": 3,
+  "captureMaxWidth": 1280,
+  "captureQuality": 55
+}

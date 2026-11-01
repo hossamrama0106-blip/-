@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { NotificationType } from "@khiam/shared";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
@@ -16,6 +16,12 @@ export default function DetailPanel() {
   })));
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [shot, setShot] = useState<{ dataUrl: string; at: string; width: number } | null>(null);
+
+  useEffect(() => {
+    setShot(null);
+    if (selectedId) api.latestScreenshot(selectedId).then(setShot).catch(() => {});
+  }, [selectedId]);
 
   if (!selectedId) return null;
   const emp = employees.find((e) => e.id === selectedId);
@@ -115,6 +121,15 @@ export default function DetailPanel() {
               {emp.active ? "تعطيل الحساب" : "تفعيل الحساب"}
             </button>
           </div>
+        </Section>
+
+        {/* آخر لقطة شاشة */}
+        <Section title="آخر لقطة شاشة">
+          {shot ? (
+            <img src={shot.dataUrl} alt="لقطة شاشة" style={{ width: "100%", borderRadius: 8, border: "1px solid #273243" }} />
+          ) : (
+            <div className="text-xs text-slate-500">لا توجد لقطة محفوظة. تظهر هنا عند تفعيل "لايف" مع برنامج الويندوز (بموافقة).</div>
+          )}
         </Section>
 
         {/* إشعارات ورسائل */}
