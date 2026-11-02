@@ -1012,6 +1012,59 @@ class Store {
       if (!keep.has(key.split(":")[1])) this.counters.delete(key);
     }
   }
+
+  // ---------- ثبات البيانات (serialize/restore — لقطة JSON، تُستبدل بـ Supabase لاحقًا) ----------
+  /** لقطة قابلة للتخزين (نستبعد الصور/اللقطات المؤقتة والأوامر العابرة) */
+  serialize(): Record<string, unknown> {
+    return {
+      v: 1,
+      employees: this.employees,
+      live: Object.fromEntries(this.live),
+      shifts: this.shifts,
+      breaks: this.breaks,
+      activities: this.activities,
+      counters: Object.fromEntries(this.counters),
+      reviews: this.reviews,
+      points: this.points,
+      violations: this.violations,
+      notifications: this.notifications,
+      chat: this.chat,
+      alerts: this.alerts,
+      nightMode: this.nightMode,
+      timeline: this.timeline,
+      history: this.history,
+      queue: this.queue,
+      metrics: this.metrics,
+      config: this.config,
+      inbox: this.inbox,
+    };
+  }
+
+  /** استعادة من لقطة محفوظة (حراسة كل حقل حتى لا يكسرنا ملف ناقص/قديم) */
+  load(d: any): void {
+    if (!d || typeof d !== "object") return;
+    if (Array.isArray(d.employees)) this.employees = d.employees;
+    if (d.live && typeof d.live === "object") this.live = new Map(Object.entries(d.live) as [string, LiveStatus][]);
+    if (Array.isArray(d.shifts)) this.shifts = d.shifts;
+    if (Array.isArray(d.breaks)) this.breaks = d.breaks;
+    if (Array.isArray(d.activities)) this.activities = d.activities;
+    if (d.counters && typeof d.counters === "object") this.counters = new Map(Object.entries(d.counters) as [string, CountersDaily][]);
+    if (Array.isArray(d.reviews)) this.reviews = d.reviews;
+    if (Array.isArray(d.points)) this.points = d.points;
+    if (Array.isArray(d.violations)) this.violations = d.violations;
+    if (Array.isArray(d.notifications)) this.notifications = d.notifications;
+    if (Array.isArray(d.chat)) this.chat = d.chat;
+    if (Array.isArray(d.alerts)) this.alerts = d.alerts;
+    if (typeof d.nightMode === "boolean") this.nightMode = d.nightMode;
+    if (Array.isArray(d.timeline)) this.timeline = d.timeline;
+    if (Array.isArray(d.history)) this.history = d.history;
+    if (Array.isArray(d.queue)) this.queue = d.queue;
+    if (Array.isArray(d.metrics)) this.metrics = d.metrics;
+    if (d.config && typeof d.config === "object") Object.assign(this.config, d.config);
+    if (d.inbox && typeof d.inbox === "object") this.inbox = d.inbox;
+    // تأكد إن كل موظف له حالة live
+    for (const e of this.employees) if (!this.live.has(e.id)) this.live.set(e.id, freshLive(e.id));
+  }
 }
 
 export const store = new Store();

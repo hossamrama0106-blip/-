@@ -31,3 +31,4 @@ Thumbs.db
 *.log
 local-data/
 screenshots-local/
+.data/

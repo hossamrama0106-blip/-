@@ -3,8 +3,12 @@ import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { store } from "./store";
 import { startSimulator } from "./simulator";
+import { startPersistence } from "./persistence";
 
 const PORT = Number(process.env.PORT ?? 8787);
+
+// ثبات البيانات: حمّل اللقطة المحفوظة قبل أي شيء + حفظ دوري وعند الخروج
+startPersistence();
 
 // حلقة إعادة حساب الحالات والتنبيهات
 setInterval(() => store.tick(), 5000);
