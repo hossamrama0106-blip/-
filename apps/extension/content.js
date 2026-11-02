@@ -468,12 +468,14 @@
       }
       // Enter = رسالة/تعليق مُرسلة
       if (e.key === "Enter" && !e.shiftKey && isEditable(e.target)) {
+        const replyText = editableText(e.target); // نلتقط نص الرد قبل ما يُرسَل ويُمسَح
         const now = Date.now();
         if (now - state.lastActivityAt < 1500) return; // debounce
         state.lastActivityAt = now;
         const comment = isComments();
         beep(comment ? 560 : 680, 0.07, 0.05);
         send("activity", { type: comment ? "comment" : "reply", channel: comment ? "comments" : CHANNEL, ref: location.pathname });
+        if (!comment) maybeEvaluateReply(replyText); // تقييم جودة الرد على المحادثة المفتوحة (عيّنة)
       }
     },
     true,
@@ -621,6 +623,37 @@
       unreadSample: rows.filter(looksUnread).slice(0, 3).map((r) => textOf(r).slice(0, 80)),
     };
   };
+
+  // ---------- تقييم جودة الرد على المحادثة المفتوحة (عيّنة) ----------
+  function editableText(el) {
+    if (!el) return "";
+    if (el.isContentEditable) return (el.innerText || el.textContent || "").trim();
+    return (el.value || "").trim();
+  }
+  function scrapeLastCustomerMessage() {
+    try {
+      const nodes = document.querySelectorAll('[role="row"] [dir="auto"], [data-scope="messages"] [dir="auto"], [role="gridcell"] span[dir="auto"]');
+      const texts = Array.from(nodes)
+        .map((n) => ((n.innerText || n.textContent) || "").trim())
+        .filter((t) => t && t.length > 1 && t.length < 500);
+      return texts.length ? texts[texts.length - 1] : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  async function maybeEvaluateReply(replyText) {
+    if (SITE !== "meta" || !state.session || !replyText || replyText.length < 2) return;
+    const customer = scrapeLastCustomerMessage();
+    const buying = customer && /(سعر|بكام|مقاس|خامة|عايز|التوصيل|الشحن|متوفر|كاش|انستا|instapay)/i.test(customer);
+    const angry = customer && /(غاضب|زعلان|بطيء|وحش|سيء|سيئ|زفت|😠|😡|لسه مستني|من امبارح)/i.test(customer);
+    // عيّنة 25% توفيرًا لاستهلاك الـ AI، أو دائمًا لو العميل عنده نية شراء/غضب
+    if (!(buying || angry) && Math.random() > 0.25) return;
+    const messages = [];
+    if (customer) messages.push({ role: "customer", text: customer });
+    messages.push({ role: "agent", text: replyText });
+    const ref = (state.live && state.live.currentConversation) || (customer ? customer.slice(0, 30) : "محادثة");
+    send("evaluate", { conversationRef: ref, messages });
+  }
 
   // ---------- boot ----------
   async function loadSession() {
