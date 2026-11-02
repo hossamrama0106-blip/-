@@ -24,6 +24,7 @@ interface DashState {
   liveEmployeeId: string | null;
   showSettings: boolean;
   showKpi: boolean;
+  showAudit: boolean;
 
   login: (code: string) => Promise<void>;
   loadSnapshot: () => Promise<void>;
@@ -35,6 +36,7 @@ interface DashState {
   closeLive: () => void;
   setShowSettings: (v: boolean) => void;
   setShowKpi: (v: boolean) => void;
+  setShowAudit: (v: boolean) => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
 }
@@ -61,6 +63,7 @@ export const useDash = create<DashState>((set, get) => ({
   liveEmployeeId: null,
   showSettings: false,
   showKpi: false,
+  showAudit: false,
 
   async login(code: string) {
     const res: any = await api.login(code);
@@ -165,6 +168,7 @@ export const useDash = create<DashState>((set, get) => ({
   closeLive: () => set({ liveEmployeeId: null }),
   setShowSettings: (v) => set({ showSettings: v }),
   setShowKpi: (v) => set({ showKpi: v }),
+  setShowAudit: (v) => set({ showAudit: v }),
   async setNight(v) {
     try {
       await api.setNightMode(v);

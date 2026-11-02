@@ -245,6 +245,19 @@ export interface KpiSnapshot {
   reviews: { good: number; ok: number; bad: number };
 }
 
+/** قيد في سجل التدقيق — أثر لكل فعل إدارة حسّاس (مَن فعل ماذا ومتى) لحماية الإدارة وصلاحية الدليل */
+export interface AuditEntry {
+  id: ID;
+  at: ISODate;
+  actorId: ID; // مَن قام بالفعل (معرّف المدير أو system)
+  actorName: string; // اسمه وقت الحدث (لقطة)
+  action: string; // نوع الفعل: admin_login, employee_create/update/delete, flags_set, violation_add, point_add, command_send, night_mode, settings_update, queue_assign/skip, notification_send
+  targetId: ID | null; // الكيان المستهدف (موظف غالبًا)
+  targetName: string | null; // اسمه وقت الحدث
+  details: string; // وصف بشري موجز
+  ip: string | null; // عنوان العميل
+}
+
 /** غلاف موحّد لأحداث الـ realtime */
 export interface RealtimeMessage<T = unknown> {
   event: string;

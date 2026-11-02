@@ -1,6 +1,7 @@
 // طبقة الاتصال بالـ backend
 import type {
   Alert,
+  AuditEntry,
   CountersDaily,
   Employee,
   InboxSnapshot,
@@ -11,7 +12,7 @@ import type {
   Violation,
 } from "@khiam/shared";
 
-export type { KpiSnapshot, MetricPoint, QueueTask } from "@khiam/shared";
+export type { KpiSnapshot, MetricPoint, QueueTask, AuditEntry } from "@khiam/shared";
 
 const BASE = "/api";
 
@@ -132,6 +133,7 @@ export const api = {
     http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings", { method: "POST", body: JSON.stringify(body) }),
 
   metrics: () => http<KpiSnapshot>("/metrics"),
+  audit: (limit = 150) => http<AuditEntry[]>(`/audit?limit=${limit}`),
   queue: () => http<QueueStats>("/queue"),
   queueNext: (employeeId: string) =>
     http<{ task: QueueTask | null; queueWaiting: number }>("/queue/next", { method: "POST", body: JSON.stringify({ employeeId }) }),

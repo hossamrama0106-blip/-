@@ -37,6 +37,13 @@ function clientIp(c: any): string {
     "local"
   );
 }
+// الفاعل لسجل التدقيق — من التوكن الموقّع (البوّابة تحققت منه بالفعل؛ نعيد اشتقاقه بدون حالة سياق).
+function actor(c: any): { id: string; name: string } {
+  const idt = verifyToken(bearer(c));
+  if (!idt?.id) return { id: "unknown", name: "غير معروف" };
+  const emp = store.findEmployee(idt.id);
+  return { id: idt.id, name: emp?.name ?? (idt.role === "admin" ? "المدير" : idt.id) };
+}
 app.use("/api/*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
   if (OPEN.has(path)) return next();
@@ -61,6 +68,7 @@ app.use("/api/*", async (c, next) => {
     (path === "/api/history" && m === "GET") ||
     path === "/api/settings" ||
     path === "/api/metrics" ||
+    path === "/api/audit" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
     (path === "/api/queue/sync" && m === "POST") ||
@@ -125,6 +133,7 @@ app.post("/api/auth/login", async (c) => {
   if (isAdminCode(code)) {
     loginOk(ip);
     const admin = store.employees.find((e) => e.role === Role.ADMIN) ?? store.employees[0];
+    store.recordAudit({ actorId: admin.id, actorName: admin.name, action: "admin_login", details: "دخول المدير للداشبورد", ip });
     const result: LoginResult = { token: signToken(admin.id, "admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
     return c.json(result);
   }
@@ -166,18 +175,31 @@ app.get("/api/employees", (c) =>
 app.post("/api/employees", async (c) => {
   const body = await c.req.json<{ code: string; name: string; whatsapp: string; role?: string }>();
   if (!body.code || !body.name) return c.json({ error: "code and name required" }, 400);
-  return c.json(store.addEmployee(body), 201);
+  const emp = store.addEmployee(body);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "employee_create", targetId: emp.id, targetName: emp.name, details: `إضافة موظف ${emp.name} (${emp.code})`, ip: clientIp(c) });
+  return c.json(emp, 201);
 });
 
 app.patch("/api/employees/:id", async (c) => {
   const patch = await c.req.json();
   const emp = store.updateEmployee(c.req.param("id"), patch);
   if (!emp) return c.json({ error: "not found" }, 404);
+  const a = actor(c);
+  const fields = Object.keys(patch).filter((k) => k !== "id" && k !== "createdAt").join("، ");
+  const note = patch.active === false ? "تعطيل الحساب" : patch.active === true ? "تفعيل الحساب" : `تعديل الحقول: ${fields || "—"}`;
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "employee_update", targetId: emp.id, targetName: emp.name, details: `${emp.name}: ${note}`, ip: clientIp(c) });
   return c.json(emp);
 });
 
 app.delete("/api/employees/:id", (c) => {
-  const ok = store.removeEmployee(c.req.param("id"));
+  const id = c.req.param("id");
+  const emp = store.findEmployee(id);
+  const ok = store.removeEmployee(id);
+  if (ok) {
+    const a = actor(c);
+    store.recordAudit({ actorId: a.id, actorName: a.name, action: "employee_delete", targetId: id, targetName: emp?.name ?? null, details: `حذف موظف ${emp?.name ?? id}`, ip: clientIp(c) });
+  }
   return c.json({ ok });
 });
 
@@ -187,6 +209,12 @@ app.post("/api/employees/:id/flags", async (c) => {
   const patch = await c.req.json<{ liveWatching?: boolean; spotlight?: boolean; superMonitor?: boolean }>();
   if (patch.superMonitor !== undefined) store.updateEmployee(id, { superMonitor: patch.superMonitor });
   const live = store.setLiveFlags(id, { liveWatching: patch.liveWatching, spotlight: patch.spotlight, superMonitor: patch.superMonitor });
+  const parts: string[] = [];
+  if (patch.liveWatching !== undefined) parts.push(`مراقبة لايف=${patch.liveWatching ? "تشغيل" : "إيقاف"}`);
+  if (patch.spotlight !== undefined) parts.push(`عين الرقابة=${patch.spotlight ? "تشغيل" : "إيقاف"}`);
+  if (patch.superMonitor !== undefined) parts.push(`مراقبة فائقة=${patch.superMonitor ? "تشغيل" : "إيقاف"}`);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "flags_set", targetId: id, details: `تفعيل رقابة علنية: ${parts.join("، ") || "—"}`, ip: clientIp(c) });
   return c.json(live);
 });
 
@@ -261,7 +289,10 @@ app.post("/api/reviews", async (c) => {
 app.get("/api/points", (c) => c.json(store.points));
 app.post("/api/points", async (c) => {
   const body = await c.req.json<{ employeeId: string; delta: number; reason: string }>();
-  return c.json(store.addPoint({ ...body, source: "manual" }), 201);
+  const p = store.addPoint({ ...body, source: "manual" });
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "point_add", targetId: body.employeeId, details: `نقاط ${body.delta > 0 ? "+" : ""}${body.delta}: ${body.reason}`, ip: clientIp(c) });
+  return c.json(p, 201);
 });
 
 // ---------- AI (تقييم الردود + الرادار الليلي) ----------
@@ -286,6 +317,8 @@ app.post("/api/ai/evaluate", async (c) => {
 app.get("/api/ai/night-mode", (c) => c.json({ enabled: store.nightMode }));
 app.post("/api/ai/night-mode", async (c) => {
   const { enabled } = await c.req.json<{ enabled: boolean }>();
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "night_mode", details: `الرادار الليلي الآلي: ${enabled ? "تشغيل" : "إيقاف"}`, ip: clientIp(c) });
   return c.json({ enabled: store.setNightMode(!!enabled) });
 });
 
@@ -294,7 +327,10 @@ app.get("/api/violations", (c) => c.json(store.violations));
 app.post("/api/violations", async (c) => {
   const body = await c.req.json<any>();
   if (body.imageUrl && String(body.imageUrl).length > 900000) return c.json({ error: "image too large" }, 400);
-  return c.json(store.addViolation(body), 201);
+  const v = store.addViolation(body);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "violation_add", targetId: v.employeeId, details: `مخالفة يدوية: ${v.type} (${v.severity})`, ip: clientIp(c) });
+  return c.json(v, 201);
 });
 app.post("/api/violations/:id/ack", async (c) => {
   const { reply } = await c.req.json<{ reply?: string }>();
@@ -309,8 +345,12 @@ app.get("/api/notifications", (c) => {
   return c.json(list);
 });
 app.post("/api/notifications", async (c) => {
-  const body = await c.req.json();
-  return c.json(store.addNotification(body), 201);
+  const body = await c.req.json<{ type: string; from: string; to: string; body: string }>();
+  const n = store.addNotification(body);
+  const a = actor(c);
+  const toName = body.to === "all" ? "الكل" : store.findEmployee(body.to)?.name ?? body.to;
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "notification_send", targetId: body.to !== "all" ? body.to : null, details: `إشعار (${body.type}) إلى ${toName}`, ip: clientIp(c) });
+  return c.json(n, 201);
 });
 app.post("/api/notifications/:id/reply", async (c) => {
   const { reply } = await c.req.json<{ reply: string }>();
@@ -364,12 +404,18 @@ app.get("/api/queue/mine", (c) => c.json(store.currentTask(c.req.query("employee
 app.post("/api/queue/:id/assign", async (c) => {
   const { employeeId } = await c.req.json<{ employeeId: string }>();
   const t = store.assignTask(c.req.param("id"), employeeId);
-  return t ? c.json(t) : c.json({ error: "not found" }, 404);
+  if (!t) return c.json({ error: "not found" }, 404);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "queue_assign", targetId: employeeId, details: `إسناد يدوي: محادثة ${t.customerRef}`, ip: clientIp(c) });
+  return c.json(t);
 });
 app.post("/api/queue/:id/skip", async (c) => {
   const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: undefined }));
   const t = store.skipTask(c.req.param("id"), reason);
-  return t ? c.json(t) : c.json({ error: "not found" }, 404);
+  if (!t) return c.json({ error: "not found" }, 404);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "queue_skip", details: `تخطّي محادثة ${t.customerRef}${reason ? " — " + reason : ""}`, ip: clientIp(c) });
+  return c.json(t);
 });
 
 // ---------- alerts ----------
@@ -405,6 +451,8 @@ app.post("/api/history", async (c) => {
 app.post("/api/employees/:id/command", async (c) => {
   const { cmd } = await c.req.json<{ cmd: string }>();
   store.queueCommand(c.req.param("id"), cmd);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "command_send", targetId: c.req.param("id"), details: `أمر للجهاز: ${cmd}`, ip: clientIp(c) });
   return c.json({ ok: true });
 });
 app.get("/api/screenshots/:id", (c) => {
@@ -414,8 +462,13 @@ app.get("/api/screenshots/:id", (c) => {
 app.get("/api/settings", (c) => c.json(store.getConfig()));
 app.post("/api/settings", async (c) => {
   const body = await c.req.json<{ googleSheetWebhook?: string; ntfyTopic?: string }>();
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "settings_update", details: `تعديل الإعدادات: ${Object.keys(body).join("، ") || "—"}`, ip: clientIp(c) });
   return c.json(store.setConfig(body));
 });
+
+// ---------- سجل التدقيق (أدمِن فقط) ----------
+app.get("/api/audit", (c) => c.json(store.auditLog(Number(c.req.query("limit") ?? 150))));
 
 // ---------- snapshot (الحالة الكاملة لأول تحميل) ----------
 app.get("/api/snapshot", (c) =>

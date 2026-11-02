@@ -16,6 +16,7 @@ import {
   ViolationSeverity,
   type ActivityEvent,
   type Alert,
+  type AuditEntry,
   type BreakEntry,
   type ChatMessage,
   type CountersDaily,
@@ -110,6 +111,7 @@ class Store {
   history: HistoryItem[] = [];
   queue: QueueTask[] = []; // طابور ميتا الإجباري
   metrics: MetricPoint[] = []; // سلسلة زمنية لمؤشرات KPI
+  audit: AuditEntry[] = []; // سجل تدقيق أفعال الإدارة (append-only، يُثبَّت ويُصدَّر)
   private commands = new Map<string, string[]>();
   config: Config = {
     googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "",
@@ -945,6 +947,37 @@ class Store {
     return { series: this.metrics.slice(-120), reviews: this.reviewStats() };
   }
 
+  // ---------- سجل التدقيق (أثر أفعال الإدارة الحسّاسة — append-only) ----------
+  recordAudit(input: {
+    actorId: string;
+    actorName?: string;
+    action: string;
+    targetId?: string | null;
+    targetName?: string | null;
+    details: string;
+    ip?: string | null;
+  }): AuditEntry {
+    const target = input.targetId ? this.findEmployee(input.targetId) : null;
+    const e: AuditEntry = {
+      id: uid("aud"),
+      at: nowIso(),
+      actorId: input.actorId,
+      actorName: input.actorName || this.findEmployee(input.actorId)?.name || (input.actorId === "system" ? "النظام" : input.actorId),
+      action: input.action,
+      targetId: input.targetId ?? null,
+      targetName: input.targetName ?? target?.name ?? null,
+      details: input.details,
+      ip: input.ip ?? null,
+    };
+    this.audit.push(e);
+    if (this.audit.length > 5000) this.audit.splice(0, this.audit.length - 5000); // سقف ذاكرة فقط (الإنتاج على Supabase بلا حد)
+    hub.broadcast("audit", e);
+    return e;
+  }
+  auditLog(limit = 150): AuditEntry[] {
+    return this.audit.slice(-limit).reverse();
+  }
+
   // ---------- background tick ----------
   /** يعيد حساب الحالات ويطلق التنبيهات بناءً على أعمار الـ heartbeat */
   tick(): void {
@@ -1058,6 +1091,7 @@ class Store {
       history: this.history,
       queue: this.queue,
       metrics: this.metrics,
+      audit: this.audit,
       config: this.config,
       inbox: this.inbox,
     };
@@ -1083,6 +1117,7 @@ class Store {
     if (Array.isArray(d.history)) this.history = d.history;
     if (Array.isArray(d.queue)) this.queue = d.queue;
     if (Array.isArray(d.metrics)) this.metrics = d.metrics;
+    if (Array.isArray(d.audit)) this.audit = d.audit;
     if (d.config && typeof d.config === "object") Object.assign(this.config, d.config);
     if (d.inbox && typeof d.inbox === "object") this.inbox = d.inbox;
     // تأكد إن كل موظف له حالة live
