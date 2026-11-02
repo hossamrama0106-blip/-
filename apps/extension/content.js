@@ -544,6 +544,84 @@
     render();
   }
 
+  // ---------- سحب بيانات ميتا الحقيقية (أفضل جهد — يُضبط على DOM ميتا الفعلي بجلسة تهيئة) ----------
+  function textOf(el) {
+    return ((el && (el.innerText || el.textContent)) || "").trim().replace(/\s+/g, " ");
+  }
+  function metaUnreadFromTitle() {
+    const m = (document.title || "").match(/\((\d+)\)/);
+    return m ? parseInt(m[1], 10) : null;
+  }
+  // صفوف المحادثات: نعتمد إشارات شبه ثابتة (role/aria/href) بدل الكلاسات المبهمة المتغيّرة
+  function metaConversationRows() {
+    const sels = [
+      'a[href*="selected_item_id"]',
+      'a[href*="/inbox/"][role]',
+      '[role="row"]',
+      '[role="gridcell"] a[href*="inbox"]',
+    ];
+    let rows = [];
+    for (const s of sels) {
+      try {
+        const found = Array.from(document.querySelectorAll(s));
+        if (found.length > rows.length) rows = found;
+      } catch (_) {}
+    }
+    return rows;
+  }
+  function looksUnread(el) {
+    const al = (el.getAttribute && (el.getAttribute("aria-label") || "")) || "";
+    if (/unread|غير مقروء|new message|رسالة جديدة/i.test(al)) return true;
+    const strong = el.querySelector && el.querySelector('span[style*="600"], span[style*="700"], b, strong');
+    return !!strong;
+  }
+  function extIdFrom(el) {
+    const a = el.matches && el.matches("a[href]") ? el : el.querySelector && el.querySelector('a[href*="inbox"], a[href*="selected_item_id"]');
+    const href = (a && a.getAttribute("href")) || "";
+    const m = href.match(/selected_item_id=([^&]+)/) || href.match(/thread[_-]?id=([^&]+)/i);
+    if (m) return "meta_" + m[1];
+    const t = textOf(el).slice(0, 50);
+    return t ? "txt_" + t.replace(/\s+/g, "_") : null;
+  }
+  function scrapeMetaInbox() {
+    try {
+      const rows = metaConversationRows();
+      const items = [];
+      const seen = new Set();
+      for (const r of rows.slice(0, 60)) {
+        if (!looksUnread(r)) continue;
+        const id = extIdFrom(r);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        const t = textOf(r);
+        if (!t) continue;
+        items.push({ externalId: id, customerRef: t.slice(0, 40), preview: t.slice(0, 160), channel: CHANNEL });
+      }
+      const unread = metaUnreadFromTitle();
+      return { ok: rows.length > 0, unread: unread == null ? items.length : unread, items };
+    } catch (e) {
+      return { ok: false, unread: null, items: [], error: String(e) };
+    }
+  }
+  async function scrapeAndSync() {
+    if (SITE !== "meta" || !state.session) return;
+    const d = scrapeMetaInbox();
+    if (!d.ok) return; // لم نتعرّف على بنية الصفحة — نتخطّى بأمان (يُضبط لاحقًا على DOM الحقيقي)
+    const comments = isComments() ? d.items.length : 0;
+    send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
+    if (d.items.length) send("queueSync", { items: d.items });
+  }
+  // تشخيص: افتح console على صفحة ميتا الحقيقية (سياق الإضافة) ونادِ __khiamProbe() لضبط الـ selectors
+  window.__khiamProbe = function () {
+    const rows = metaConversationRows();
+    return {
+      title: document.title,
+      unreadFromTitle: metaUnreadFromTitle(),
+      rowCount: rows.length,
+      unreadSample: rows.filter(looksUnread).slice(0, 3).map((r) => textOf(r).slice(0, 80)),
+    };
+  };
+
   // ---------- boot ----------
   async function loadSession() {
     const r = await send("session");
@@ -564,6 +642,12 @@
   setInterval(refreshRank, 15000);
   setInterval(loadSession, 20000); // يلتقط تسجيل الدخول من البوب-أب
   setInterval(ensureMounted, 3000); // يصمد لو الموقع شال الشريط
+
+  // سحب بيانات ميتا الحقيقية (أفضل جهد) على صفحات ميتا فقط
+  if (SITE === "meta") {
+    setTimeout(scrapeAndSync, 4000);
+    setInterval(scrapeAndSync, 20000);
+  }
 
   // إعادة الحقن لو الـ DOM اتغيّر بالكامل
   const mo = new MutationObserver(() => ensureMounted());

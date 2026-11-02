@@ -101,6 +101,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await api("/api/queue/next", "POST", { employeeId: reqId() }) });
         case "queueDone":
           return sendResponse({ ok: true, data: await api("/api/queue/done", "POST", { employeeId: reqId(), taskId: (msg.data && msg.data.taskId) || undefined }) });
+        case "inboxSync":
+          return sendResponse({ ok: true, data: await api("/api/inbox", "POST", { unreadMessages: msg.data.unreadMessages, unreadComments: msg.data.unreadComments }) });
+        case "queueSync":
+          return sendResponse({ ok: true, data: await api("/api/queue/sync", "POST", { items: (msg.data && msg.data.items) || [] }) });
         case "openPopup":
           try { await chrome.action.openPopup(); } catch (_) {}
           return sendResponse({ ok: true });

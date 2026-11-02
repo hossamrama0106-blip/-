@@ -216,6 +216,7 @@ export interface QueueTask {
   customerRef: string; // مرجع العميل/المحادثة (مثل "عميل #234")
   preview: string; // آخر رسالة من العميل (مقتطف)
   link: string | null; // رابط فتح المحادثة في ميتا
+  externalId: string | null; // معرّف المحادثة في ميتا (لمنع التكرار عند المزامنة من الإكستنشن)
   priority: QueuePriority; // الأولوية
   status: QueueStatus; // الحالة
   enqueuedAt: ISODate; // وقت دخول الطابور

@@ -721,13 +721,14 @@ class Store {
     return new Date(a.enqueuedAt).getTime() - new Date(b.enqueuedAt).getTime();
   }
 
-  enqueueTask(input: { channel?: string; customerRef: string; preview?: string; link?: string | null; priority?: string }): QueueTask {
+  enqueueTask(input: { channel?: string; customerRef: string; preview?: string; link?: string | null; priority?: string; externalId?: string | null }): QueueTask {
     const t: QueueTask = {
       id: uid("task"),
       channel: (input.channel as QueueTask["channel"]) ?? Channel.MESSENGER,
       customerRef: input.customerRef,
       preview: (input.preview ?? "").slice(0, 200),
       link: input.link ?? null,
+      externalId: input.externalId ?? null,
       priority: (input.priority as QueueTask["priority"]) ?? QueuePriority.NORMAL,
       status: QueueStatus.WAITING,
       enqueuedAt: nowIso(),
@@ -744,6 +745,28 @@ class Store {
     }
     this.bumpQueue();
     return t;
+  }
+
+  /** مزامنة محادثات ميتا الحقيقية المسحوبة من الإكستنشن → الطابور (dedup عبر externalId) */
+  syncQueue(
+    items: { externalId?: string | null; channel?: string; customerRef: string; preview?: string; link?: string | null; priority?: string }[],
+  ): { added: number; skipped: number; stats: ReturnType<Store["queueStats"]> } {
+    let added = 0;
+    let skipped = 0;
+    const activeExt = new Set(
+      this.queue
+        .filter((t) => (t.status === QueueStatus.WAITING || t.status === QueueStatus.ASSIGNED) && t.externalId)
+        .map((t) => t.externalId as string),
+    );
+    for (const it of (items || []).slice(0, 100)) {
+      if (!it || !it.customerRef) { skipped++; continue; }
+      const ext = it.externalId || null;
+      if (ext && activeExt.has(ext)) { skipped++; continue; } // المحادثة موجودة بالفعل في الطابور
+      this.enqueueTask({ channel: it.channel, customerRef: it.customerRef, preview: it.preview, link: it.link ?? null, priority: it.priority, externalId: ext });
+      if (ext) activeExt.add(ext);
+      added++;
+    }
+    return { added, skipped, stats: this.queueStats() };
   }
 
   currentTask(employeeId: string): QueueTask | null {

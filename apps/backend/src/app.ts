@@ -54,6 +54,7 @@ app.use("/api/*", async (c, next) => {
     path === "/api/metrics" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
+    (path === "/api/queue/sync" && m === "POST") ||
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
   if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
@@ -321,6 +322,11 @@ app.post("/api/queue/enqueue", async (c) => {
   const body = await c.req.json<{ channel?: string; customerRef: string; preview?: string; link?: string; priority?: string }>();
   if (!body.customerRef) return c.json({ error: "customerRef required" }, 400);
   return c.json(store.enqueueTask(body), 201);
+});
+// مزامنة محادثات ميتا الحقيقية المسحوبة من الإكستنشن (dedup عبر externalId)
+app.post("/api/queue/sync", async (c) => {
+  const body = await c.req.json<{ items?: unknown[] }>().catch(() => ({ items: [] }));
+  return c.json(store.syncQueue((body.items as Parameters<typeof store.syncQueue>[0]) || []));
 });
 app.post("/api/queue/next", async (c) => {
   const { employeeId } = await c.req.json<{ employeeId: string }>();
