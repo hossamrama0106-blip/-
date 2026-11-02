@@ -226,6 +226,24 @@ export interface QueueTask {
   handleMs: number | null; // زمن المعالجة (من الإسناد للإنهاء)
 }
 
+/** نقطة في السلسلة الزمنية للمؤشرات (لرسوم KPI) */
+export interface MetricPoint {
+  at: Millis;
+  unread: number; // رسائل غير مقروءة
+  comments: number; // تعليقات غير مقروءة
+  queueWaiting: number; // منتظر بالطابور
+  queueAssigned: number; // قيد المعالجة
+  queueDone: number; // منجز اليوم (تراكمي)
+  online: number; // موظفون متصلون
+  avgHandleMs: number | null; // متوسط زمن معالجة المحادثة
+}
+
+/** لقطة مؤشرات لرسوم KPI */
+export interface KpiSnapshot {
+  series: MetricPoint[];
+  reviews: { good: number; ok: number; bad: number };
+}
+
 /** غلاف موحّد لأحداث الـ realtime */
 export interface RealtimeMessage<T = unknown> {
   event: string;

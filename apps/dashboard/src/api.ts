@@ -4,11 +4,14 @@ import type {
   CountersDaily,
   Employee,
   InboxSnapshot,
+  KpiSnapshot,
   LiveStatus,
   NotificationItem,
   QueueTask,
   Violation,
 } from "@khiam/shared";
+
+export type { KpiSnapshot, MetricPoint, QueueTask } from "@khiam/shared";
 
 const BASE = "/api";
 
@@ -93,6 +96,7 @@ export interface Snapshot {
   nightMode: boolean;
   aiMode: string;
   queue: QueueStats;
+  metrics: KpiSnapshot;
 }
 
 export const api = {
@@ -127,6 +131,7 @@ export const api = {
   setSettings: (body: { googleSheetWebhook?: string; ntfyTopic?: string; queueStrict?: boolean }) =>
     http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings", { method: "POST", body: JSON.stringify(body) }),
 
+  metrics: () => http<KpiSnapshot>("/metrics"),
   queue: () => http<QueueStats>("/queue"),
   queueNext: (employeeId: string) =>
     http<{ task: QueueTask | null; queueWaiting: number }>("/queue/next", { method: "POST", body: JSON.stringify({ employeeId }) }),

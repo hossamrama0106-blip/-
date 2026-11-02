@@ -13,6 +13,7 @@ import DetailPanel from "./components/DetailPanel";
 import LiteMode from "./components/LiteMode";
 import LiveModal from "./components/LiveModal";
 import Settings from "./components/Settings";
+import KpiPanel from "./components/KpiPanel";
 
 export default function App() {
   const { loggedIn, liteMode } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode })));
@@ -24,6 +25,7 @@ export default function App() {
       <DetailPanel />
       <LiveModal />
       <Settings />
+      <KpiPanel />
     </div>
   );
 }

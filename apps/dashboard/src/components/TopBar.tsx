@@ -3,7 +3,7 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, adminId, alerts, queue } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, adminId, alerts, queue } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     inbox: s.inbox,
@@ -14,6 +14,7 @@ export default function TopBar() {
     nightMode: s.nightMode,
     setNight: s.setNight,
     setShowSettings: s.setShowSettings,
+    setShowKpi: s.setShowKpi,
     alerts: s.alerts,
     queue: s.queue,
   })));
@@ -53,6 +54,13 @@ export default function TopBar() {
         className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
       >
         📢
+      </button>
+      <button
+        onClick={() => setShowKpi(true)}
+        title="مؤشرات الأداء (KPI)"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        📊
       </button>
       <button
         onClick={() => setShowSettings(true)}

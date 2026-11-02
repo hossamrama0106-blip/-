@@ -51,6 +51,7 @@ app.use("/api/*", async (c, next) => {
     path === "/api/timeline" ||
     (path === "/api/history" && m === "GET") ||
     path === "/api/settings" ||
+    path === "/api/metrics" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
@@ -311,6 +312,9 @@ app.post("/api/inbox", async (c) => {
   return c.json(store.setInbox(unreadMessages, unreadComments));
 });
 
+// ---------- مؤشرات KPI ----------
+app.get("/api/metrics", (c) => c.json(store.kpiSnapshot()));
+
 // ---------- طابور ميتا الإجباري ----------
 app.get("/api/queue", (c) => c.json(store.queueStats()));
 app.post("/api/queue/enqueue", async (c) => {
@@ -399,6 +403,7 @@ app.get("/api/snapshot", (c) =>
     aiMode: aiMode(),
     peak: store.peakStatus(),
     queue: store.queueStats(),
+    metrics: store.kpiSnapshot(),
   }),
 );
 

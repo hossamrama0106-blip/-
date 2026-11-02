@@ -22,6 +22,7 @@ import {
   type Employee,
   type InboxSnapshot,
   type LiveStatus,
+  type MetricPoint,
   type NotificationItem,
   type PointEntry,
   type HistoryItem,
@@ -108,6 +109,7 @@ class Store {
   timeline: TimelineEvent[] = [];
   history: HistoryItem[] = [];
   queue: QueueTask[] = []; // طابور ميتا الإجباري
+  metrics: MetricPoint[] = []; // سلسلة زمنية لمؤشرات KPI
   private commands = new Map<string, string[]>();
   config: Config = {
     googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "",
@@ -880,6 +882,46 @@ class Store {
     }
   }
 
+  // ---------- مؤشرات KPI (سلسلة زمنية + توزيع جودة الردود) ----------
+  /** عيّنة لحظية تُجمَع من tick كل 5 ثوانٍ */
+  sampleMetrics(): void {
+    let online = 0;
+    let queueDone = 0;
+    for (const e of this.employees) {
+      if (this.getLive(e.id).online) online++;
+      queueDone += this.getCounters(e.id).tasksDone;
+    }
+    const assigned = this.queue.filter((t) => t.status === QueueStatus.ASSIGNED).length;
+    const done = this.queue.filter((t) => t.status === QueueStatus.DONE && t.handleMs != null).slice(-50);
+    const avgHandleMs = done.length ? Math.round(done.reduce((a, t) => a + (t.handleMs ?? 0), 0) / done.length) : null;
+    this.metrics.push({
+      at: Date.now(),
+      unread: this.inbox.unreadMessages,
+      comments: this.inbox.unreadComments,
+      queueWaiting: this.waitingCount(),
+      queueAssigned: assigned,
+      queueDone,
+      online,
+      avgHandleMs,
+    });
+    if (this.metrics.length > 180) this.metrics.splice(0, this.metrics.length - 180);
+  }
+
+  /** توزيع جودة الردود (آخر التقييمات المحفوظة) */
+  reviewStats(): { good: number; ok: number; bad: number } {
+    let good = 0, ok = 0, bad = 0;
+    for (const r of this.reviews) {
+      if (r.verdict === "good") good++;
+      else if (r.verdict === "ok") ok++;
+      else bad++;
+    }
+    return { good, ok, bad };
+  }
+
+  kpiSnapshot(): { series: MetricPoint[]; reviews: { good: number; ok: number; bad: number } } {
+    return { series: this.metrics.slice(-120), reviews: this.reviewStats() };
+  }
+
   // ---------- background tick ----------
   /** يعيد حساب الحالات ويطلق التنبيهات بناءً على أعمار الـ heartbeat */
   tick(): void {
@@ -926,6 +968,8 @@ class Store {
     }
     // تصعيد تأخّر الطابور
     this.queueScan();
+    // عيّنة مؤشرات KPI (سلسلة زمنية)
+    this.sampleMetrics();
   }
 
   // ---------- auto-purge (تنظيف ذاتي للذاكرة — الوعد في الخطة: حذف الروتيني بعد 48 ساعة) ----------

@@ -1,7 +1,7 @@
 // حالة الداشبورد + الاتصال اللحظي (SSE)
 import { create } from "zustand";
 import { RealtimeEvent, type Alert, type Employee, type InboxSnapshot, type LiveStatus, type NotificationItem, type Violation } from "@khiam/shared";
-import { api, getToken, setToken, type Leaderboard, type QueueStats, type Snapshot } from "./api";
+import { api, getToken, setToken, type KpiSnapshot, type Leaderboard, type QueueStats, type Snapshot } from "./api";
 
 interface DashState {
   connected: boolean;
@@ -14,6 +14,7 @@ interface DashState {
   live: Record<string, LiveStatus>;
   leaderboard: Leaderboard | null;
   queue: QueueStats | null;
+  kpi: KpiSnapshot | null;
   inbox: InboxSnapshot;
   alerts: Alert[];
   violations: Violation[];
@@ -22,6 +23,7 @@ interface DashState {
   selectedId: string | null;
   liveEmployeeId: string | null;
   showSettings: boolean;
+  showKpi: boolean;
 
   login: (code: string) => Promise<void>;
   loadSnapshot: () => Promise<void>;
@@ -32,7 +34,9 @@ interface DashState {
   openLive: (id: string) => void;
   closeLive: () => void;
   setShowSettings: (v: boolean) => void;
+  setShowKpi: (v: boolean) => void;
   refreshLeaderboard: () => Promise<void>;
+  refreshKpi: () => Promise<void>;
 }
 
 let es: EventSource | null = null;
@@ -48,6 +52,7 @@ export const useDash = create<DashState>((set, get) => ({
   live: {},
   leaderboard: null,
   queue: null,
+  kpi: null,
   inbox: { unreadMessages: 0, unreadComments: 0, at: "" },
   alerts: [],
   violations: [],
@@ -55,6 +60,7 @@ export const useDash = create<DashState>((set, get) => ({
   selectedId: null,
   liveEmployeeId: null,
   showSettings: false,
+  showKpi: false,
 
   async login(code: string) {
     const res: any = await api.login(code);
@@ -71,6 +77,7 @@ export const useDash = create<DashState>((set, get) => ({
       live: snap.live,
       leaderboard: snap.leaderboard,
       queue: snap.queue,
+      kpi: snap.metrics,
       inbox: snap.inbox,
       alerts: snap.alerts,
       violations: snap.violations,
@@ -157,6 +164,7 @@ export const useDash = create<DashState>((set, get) => ({
   openLive: (id) => set({ liveEmployeeId: id }),
   closeLive: () => set({ liveEmployeeId: null }),
   setShowSettings: (v) => set({ showSettings: v }),
+  setShowKpi: (v) => set({ showKpi: v }),
   async setNight(v) {
     try {
       await api.setNightMode(v);
@@ -166,5 +174,11 @@ export const useDash = create<DashState>((set, get) => ({
   async refreshLeaderboard() {
     const lb = await api.leaderboard();
     set({ leaderboard: lb });
+  },
+  async refreshKpi() {
+    try {
+      const k = await api.metrics();
+      set({ kpi: k });
+    } catch {}
   },
 }));
