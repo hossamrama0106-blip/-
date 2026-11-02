@@ -1,8 +1,32 @@
 // مصادقة بتوكنات موقّعة (HMAC-SHA256). لا تُحفظ أسرار على العميل، والتوكن يُتحقق منه على السيرفر.
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
-const SECRET = process.env.AUTH_SECRET || randomBytes(32).toString("hex");
+const IS_PROD = process.env.NODE_ENV === "production";
+
+// سر توقيع التوكنات — لازم يتحدد في الإنتاج (وإلا التوكنات تتبطّل مع كل إعادة تشغيل وحمايتها ضعيفة).
+const SECRET =
+  process.env.AUTH_SECRET ||
+  (() => {
+    console.warn(
+      IS_PROD
+        ? "⚠️  AUTH_SECRET غير محدّد في الإنتاج — كل التوكنات هتتبطّل مع أي إعادة تشغيل وأمانها ضعيف. حدّده في .env"
+        : "ℹ️  AUTH_SECRET غير محدّد — بيُولّد سر مؤقّت للتطوير (التوكنات تتبطّل مع إعادة التشغيل).",
+    );
+    return randomBytes(32).toString("hex");
+  })();
+
 const MAX_AGE_MS = Number(process.env.TOKEN_TTL_MS || 16 * 60 * 60 * 1000); // 16 ساعة
+
+// كود دخول المدير — من متغيّر بيئة. في التطوير يرجع لـ ADMIN مع تنبيه؛ في الإنتاج لازم يتحدد (وإلا الدخول مقفول).
+const ENV_ADMIN_CODE = (process.env.ADMIN_CODE || "").trim();
+const EFFECTIVE_ADMIN_CODE = ENV_ADMIN_CODE || (IS_PROD ? "" : "ADMIN");
+if (!ENV_ADMIN_CODE) {
+  console.warn(
+    IS_PROD
+      ? "⚠️  ADMIN_CODE غير محدّد في الإنتاج — دخول المدير مقفول لحد ما تحدّده في .env"
+      : "ℹ️  ADMIN_CODE غير محدّد — بيُستخدم كود التطوير ADMIN (متنفعش للإنتاج).",
+  );
+}
 
 export interface Identity {
   id: string;
@@ -38,4 +62,50 @@ export function verifyToken(token: string | undefined | null): Identity | null {
   } catch {
     return null;
   }
+}
+
+/** تحقّق كود المدير بمقارنة ثابتة الزمن. fail-closed في الإنتاج لو الكود مش محدّد. */
+export function isAdminCode(code: string | undefined | null): boolean {
+  if (!EFFECTIVE_ADMIN_CODE) return false; // الإنتاج بدون كود مضبوط = دخول المدير مقفول
+  const given = Buffer.from(String(code ?? "").trim(), "utf8");
+  const want = Buffer.from(EFFECTIVE_ADMIN_CODE, "utf8");
+  if (given.length !== want.length) return false;
+  return timingSafeEqual(given, want);
+}
+
+// ---------- حارس محاولات الدخول (يمنع تخمين الأكواد بالقوة الغاشمة) ----------
+const WINDOW_MS = Number(process.env.LOGIN_WINDOW_MS || 60_000); // نافذة العدّ
+const MAX_FAILS = Number(process.env.LOGIN_MAX_FAILS || 8); // محاولات فاشلة مسموحة بالنافذة
+const BLOCK_MS = Number(process.env.LOGIN_BLOCK_MS || 5 * 60_000); // مدة الحظر بعد التجاوز
+
+interface Attempt {
+  fails: number;
+  first: number;
+  blockedUntil: number;
+}
+const attempts = new Map<string, Attempt>();
+
+/** قبل محاولة الدخول: هل الـ key (IP) محظور حاليًا؟ */
+export function loginGuard(key: string): { ok: true } | { ok: false; retryAfter: number } {
+  const now = Date.now();
+  const rec = attempts.get(key);
+  if (rec && rec.blockedUntil > now) return { ok: false, retryAfter: Math.ceil((rec.blockedUntil - now) / 1000) };
+  return { ok: true };
+}
+
+/** تسجيل محاولة فاشلة — بعد تجاوز الحد يُحظر الـ key مؤقتًا. */
+export function loginFailed(key: string): void {
+  const now = Date.now();
+  // تنظيف كسول للسجلات المنتهية (يمنع تضخّم الخريطة تحت هجوم موزّع)
+  if (attempts.size > 1000) for (const [k, r] of attempts) if (r.blockedUntil < now && now - r.first > WINDOW_MS) attempts.delete(k);
+  let rec = attempts.get(key);
+  if (!rec || now - rec.first > WINDOW_MS) rec = { fails: 0, first: now, blockedUntil: 0 };
+  rec.fails++;
+  if (rec.fails >= MAX_FAILS) rec.blockedUntil = now + BLOCK_MS;
+  attempts.set(key, rec);
+}
+
+/** دخول ناجح → صفّر العدّاد لهذا الـ key. */
+export function loginOk(key: string): void {
+  attempts.delete(key);
 }

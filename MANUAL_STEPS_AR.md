@@ -96,4 +96,4 @@ python khiam_agent.py --code K1003
 راجع `المطلوب-منك.md` و`مراجعة-وخطة-التطوير.md`. باختصار:
 - **Supabase** (سجلات) + **Upstash** (حالة لحظية) + **Cloudflare R2** (صور) + **Workers/Pages** (نشر).
 - الـ backend مكتوب بـ Hono فينتقل لـ Cloudflare Worker بسهولة، والداشبورد Vite فينشر على Pages.
-- ضع سر توكن ثابت `AUTH_SECRET` في متغيّرات البيئة عند النشر.
+- عند النشر اضبط في متغيّرات البيئة: `NODE_ENV=production` + سر ثابت قوي `AUTH_SECRET` + كود مدير سري `ADMIN_CODE` (بدونهما: التوكنات تتبطّل مع كل تشغيل ودخول المدير مقفول). التفاصيل في `apps/backend/.env.example`.

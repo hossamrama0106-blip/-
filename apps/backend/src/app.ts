@@ -2,11 +2,11 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { DEV_ADMIN_CODE, Role, type LoginResult } from "@khiam/shared";
+import { Role, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
-import { signToken, verifyToken } from "./auth";
+import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
 
 export const app = new Hono();
 
@@ -27,6 +27,15 @@ function bearer(c: any): string {
   const h = c.req.header("authorization") || "";
   if (h.startsWith("Bearer ")) return h.slice(7);
   return c.req.query("token") || "";
+}
+// عنوان العميل لحارس الدخول — يراعي البروكسي/Cloudflare، وإلا "local" على الجهاز المحلي.
+function clientIp(c: any): string {
+  return (
+    c.req.header("cf-connecting-ip") ||
+    c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+    c.req.header("x-real-ip") ||
+    "local"
+  );
 }
 app.use("/api/*", async (c, next) => {
   const path = new URL(c.req.url).pathname;
@@ -107,15 +116,29 @@ app.get("/test", (c) =>
 
 // ---------- auth ----------
 app.post("/api/auth/login", async (c) => {
+  const ip = clientIp(c);
+  const guard = loginGuard(ip);
+  if (!guard.ok) return c.json({ error: "محاولات دخول كتير — استنى شوية وجرّب تاني", retryAfter: guard.retryAfter }, 429);
+
   const { code, whatsapp } = await c.req.json<{ code: string; whatsapp?: string }>();
-  if (code?.toUpperCase() === DEV_ADMIN_CODE) {
+
+  if (isAdminCode(code)) {
+    loginOk(ip);
     const admin = store.employees.find((e) => e.role === Role.ADMIN) ?? store.employees[0];
     const result: LoginResult = { token: signToken(admin.id, "admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
     return c.json(result);
   }
-  const emp = store.findByCode(code);
-  if (!emp) return c.json({ error: "كود غير صحيح" }, 404);
-  if (!emp.active) return c.json({ error: "الحساب معطّل" }, 403);
+
+  const emp = store.findByCode(code || "");
+  if (!emp) {
+    loginFailed(ip);
+    return c.json({ error: "كود غير صحيح" }, 404);
+  }
+  if (!emp.active) {
+    loginFailed(ip);
+    return c.json({ error: "الحساب معطّل" }, 403);
+  }
+  loginOk(ip);
   if (whatsapp && !emp.whatsapp) store.updateEmployee(emp.id, { whatsapp });
   const result: LoginResult = {
     token: signToken(emp.id, "employee"),
