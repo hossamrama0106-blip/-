@@ -3,10 +3,11 @@ import { NotificationType } from "@khiam/shared";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api } from "../api";
+import ViolationExport from "./ViolationExport";
 import { PRESENCE_LABEL, STATUS_META, clockAt, fmtGap, timeAgo } from "../lib/ui";
 
 export default function DetailPanel() {
-  const { selectedId, employees, live, leaderboard, queue, adminId, select, openLive } = useDash(useShallow((s) => ({
+  const { selectedId, employees, live, leaderboard, queue, adminId, select, openLive, violations } = useDash(useShallow((s) => ({
     selectedId: s.selectedId,
     employees: s.employees,
     live: s.live,
@@ -15,6 +16,7 @@ export default function DetailPanel() {
     adminId: s.adminId,
     select: s.select,
     openLive: s.openLive,
+    violations: s.violations,
   })));
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
@@ -24,6 +26,7 @@ export default function DetailPanel() {
   const [history, setHistory] = useState<Array<{ id: string; url: string; title: string; visitAt: string }>>([]);
   const [vioLink, setVioLink] = useState("");
   const [vioImg, setVioImg] = useState<string | null>(null);
+  const [showExport, setShowExport] = useState(false);
 
   useEffect(() => {
     setShot(null);
@@ -65,6 +68,7 @@ export default function DetailPanel() {
     api.sendNotification({ type, from: adminId ?? "admin", to: emp.id, body });
 
   return (
+    <>
     <div className="fixed inset-0 z-40 flex" onClick={() => select(null)}>
       <div className="flex-1 bg-black/50" />
       <div
@@ -294,12 +298,15 @@ export default function DetailPanel() {
               })
             }
           />
+          <ActBtn full label="📤 تصدير مخالفات اليوم للواتساب" onClick={() => setShowExport(true)} />
           <div className="text-[11px] text-slate-500 mt-2">
             بدأ الشيفت: {clockAt(l?.lastReplyAt ?? null) === "—" ? "—" : "اليوم"} · الواتساب: <span dir="ltr">{emp.whatsapp}</span>
           </div>
         </Section>
       </div>
     </div>
+    {showExport && <ViolationExport emp={emp} violations={violations} onClose={() => setShowExport(false)} />}
+    </>
   );
 }
 
