@@ -7,6 +7,7 @@ import Login from "./components/Login";
 import TopBar from "./components/TopBar";
 import EmployeeCard from "./components/EmployeeCard";
 import Leaderboard from "./components/Leaderboard";
+import QueueBoard from "./components/QueueBoard";
 import AlertsRail from "./components/AlertsRail";
 import DetailPanel from "./components/DetailPanel";
 import LiteMode from "./components/LiteMode";
@@ -60,6 +61,8 @@ function FullDashboard() {
             + إضافة موظف
           </button>
         </div>
+
+        <QueueBoard />
 
         <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3">
           {ordered.map((emp) => (

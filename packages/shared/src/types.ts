@@ -6,6 +6,8 @@ import type {
   EmployeeStatus,
   NotificationType,
   PresenceState,
+  QueuePriority,
+  QueueStatus,
   ReplyVerdict,
   Role,
   ViolationSeverity,
@@ -89,6 +91,7 @@ export interface CountersDaily {
   comments: number;
   orders: number;
   openNoReply: number; // فتح ولم يرد
+  tasksDone: number; // محادثات أُنجزت من طابور ميتا (عدّاد دائم لا يتأثر بتنظيف الطابور)
   avgGapMs: number | null; // متوسط الفجوة بين الردود
   typingWpm: number | null; // متوسط سرعة الكتابة
   activeMs: number; // زمن العمل الفعلي
@@ -184,6 +187,43 @@ export interface Screenshot {
   isViolation: boolean;
   ocrText: string | null;
   at: ISODate;
+}
+
+/** حدث في الخط الزمني لنشاط الموظف (كل خطوة محفوظة) */
+export interface TimelineEvent {
+  id: ID;
+  employeeId: ID;
+  kind: "window" | "activity" | "status" | "capture"; // نوع الحدث
+  label: string; // وصف بشري
+  category: string; // work / social / games / entertainment / other
+  at: ISODate;
+}
+
+/** عنصر من هيستوري متصفح الموظف (يُسحب بموافقة عند طلب الإدارة) */
+export interface HistoryItem {
+  id: ID;
+  employeeId: ID;
+  url: string;
+  title: string;
+  visitAt: ISODate; // وقت الزيارة الفعلي
+  at: ISODate; // وقت السحب
+}
+
+/** مهمة في طابور ميتا الإجباري (توزيع عادل يمنع التهرب من العملاء) */
+export interface QueueTask {
+  id: ID;
+  channel: Channel; // القناة (ماسنجر/انستجرام/واتساب/تعليقات)
+  customerRef: string; // مرجع العميل/المحادثة (مثل "عميل #234")
+  preview: string; // آخر رسالة من العميل (مقتطف)
+  link: string | null; // رابط فتح المحادثة في ميتا
+  priority: QueuePriority; // الأولوية
+  status: QueueStatus; // الحالة
+  enqueuedAt: ISODate; // وقت دخول الطابور
+  assignedTo: ID | null; // الموظف المُسنَد له
+  assignedAt: ISODate | null; // وقت الإسناد
+  doneAt: ISODate | null; // وقت الإنهاء
+  waitMs: number | null; // كم انتظرت قبل الإسناد
+  handleMs: number | null; // زمن المعالجة (من الإسناد للإنهاء)
 }
 
 /** غلاف موحّد لأحداث الـ realtime */

@@ -43,7 +43,21 @@
     lastActivityAt: 0,
     seenNotif: new Set(),
     spotlightBeeped: false,
+    task: null, // المهمة الحالية من طابور ميتا
+    queueWaiting: 0,
+    queueStrict: true,
+    taskOpen: false,
   };
+
+  const esc = (s) =>
+    String(s == null ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  function fmtAgo(iso) {
+    if (!iso) return "";
+    const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+    const m = Math.floor(s / 60);
+    return m ? `${m}د ${s % 60}ث` : `${s}ث`;
+  }
+  const CH_LABEL = { messenger: "ماسنجر", instagram: "انستجرام", whatsapp: "واتساب", comments: "تعليقات", operix: "أوبريكس" };
 
   // ---------- audio ----------
   let audioCtx = null;
@@ -113,6 +127,25 @@
         .peak{ display:none;align-items:center;gap:5px;background:#ea580c;color:#fff;padding:3px 9px;border-radius:7px;font-weight:700; }
         .peak.on{ display:inline-flex; }
         .bar.peak-on{ background:#431407; }
+        .task{ display:none;align-items:center;gap:6px;background:#0b2a4a;border:1px solid #1d4ed8;color:#bfdbfe;
+               padding:3px 9px;border-radius:7px;font-weight:700;cursor:pointer;max-width:230px; }
+        .task.on{ display:inline-flex; }
+        .task.empty{ background:#111827;border-color:#273243;color:#94a3b8; }
+        .task .ref{ overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+        button.done{ background:#16a34a;border-color:#16a34a;color:#fff; }
+        .tpanel{ position:fixed;top:44px;left:12px;width:340px;background:#0f141c;border:1px solid #1d4ed8;border-radius:12px;
+                 display:none;flex-direction:column;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.5); }
+        .tpanel.on{ display:flex; }
+        .tpanel .head{ padding:10px 12px;border-bottom:1px solid #273243;font-weight:700;color:#fff;display:flex;justify-content:space-between;align-items:center; }
+        .tpanel .head .w{ font-size:11px;color:#93c5fd;font-weight:600; }
+        .tbody{ padding:12px;display:flex;flex-direction:column;gap:8px; }
+        .tbody .cust{ font-weight:800;color:#fff;font-size:15px;display:flex;align-items:center;gap:6px; }
+        .tbody .prev{ background:#1b2432;border-radius:8px;padding:8px 10px;font-size:13px;color:#cbd5e1;line-height:1.6; }
+        .tbody .meta{ font-size:11px;color:#94a3b8;display:flex;gap:12px; }
+        .tbody .row{ display:flex;gap:8px;margin-top:2px; }
+        .tbody .empty{ color:#94a3b8;font-size:13px; }
+        .badge{ font-size:10px;padding:2px 7px;border-radius:999px;font-weight:700; }
+        .badge.vip{ background:#7c2d12;color:#fed7aa; } .badge.high{ background:#78350f;color:#fde68a; } .badge.normal{ background:#1e293b;color:#cbd5e1; }
         .eye{ display:none;align-items:center;gap:5px;color:#fca5a5; }
         .eye.on{ display:flex; }
         @keyframes pr{0%,100%{box-shadow:0 0 0 0 rgba(239,68,68,.6)}50%{box-shadow:0 0 0 7px rgba(239,68,68,0)}}
@@ -138,6 +171,8 @@
         <div class="bar">
           <span class="brand">Khiam Ops</span>
           <span class="status"><span class="dot" id="dot" style="background:#64748b"></span><span id="statusLabel">—</span></span>
+          <span class="task empty" id="taskChip">📋 الطابور</span>
+          <button class="done" id="doneBtn" style="display:none">✅ تم، التالي</button>
           <span class="eye" id="eye">👁 مراقبة مباشرة</span>
           <span class="spacer"></span>
           <span class="spot" id="spot">🔴 الإدارة تتابع شاشتك الآن</span>
@@ -151,6 +186,10 @@
           <div class="head">الشات الداخلي للفريق</div>
           <div class="msgs" id="msgs"></div>
           <div class="inp"><input id="chatInput" placeholder="اكتب رسالة للفريق…"><button class="primary" id="chatSend">إرسال</button></div>
+        </div>
+        <div class="tpanel" id="tpanel">
+          <div class="head"><span>طابور ميتا — مهمتك</span><span class="w" id="tpanelWaiting"></span></div>
+          <div class="tbody" id="tbody"></div>
         </div>
         <div class="consent" id="consent">
           <div style="font-weight:800;color:#fff;margin-bottom:6px">إشعار المتابعة</div>
@@ -171,6 +210,11 @@
       chatBtn: root.getElementById("chatBtn"),
       bar: root.querySelector(".bar"),
       peak: root.getElementById("peak"),
+      taskChip: root.getElementById("taskChip"),
+      doneBtn: root.getElementById("doneBtn"),
+      tpanel: root.getElementById("tpanel"),
+      tpanelWaiting: root.getElementById("tpanelWaiting"),
+      tbody: root.getElementById("tbody"),
       toasts: root.getElementById("toasts"),
       panel: root.getElementById("panel"),
       msgs: root.getElementById("msgs"),
@@ -182,6 +226,8 @@
     els.chatBtn.addEventListener("click", toggleChat);
     els.chatSend.addEventListener("click", sendChat);
     els.chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); sendChat(); } });
+    els.taskChip.addEventListener("click", () => { if (!state.task && state.queueWaiting > 0) pullNext(); else toggleTaskPanel(); });
+    els.doneBtn.addEventListener("click", doneNext);
     els.consentOk.addEventListener("click", async () => { await send("consent"); if (state.session) state.session.consentRequired = false; els.consent.classList.remove("on"); });
     render();
   }
@@ -197,6 +243,7 @@
 
   function render() {
     if (!els) return;
+    renderTask();
     if (!state.session) {
       els.statusLabel.textContent = "سجّل الدخول";
       els.dot.style.background = "#64748b";
@@ -314,6 +361,97 @@
     loadChat();
   }
 
+  // ---------- طابور ميتا الإجباري ----------
+  function renderTask() {
+    if (!els) return;
+    const presence = state.live && state.live.presence;
+    // الطابور يظهر فقط أثناء العمل
+    if (!state.session || presence !== "working") {
+      els.taskChip.classList.remove("on");
+      els.doneBtn.style.display = "none";
+      els.tpanel.classList.remove("on");
+      state.taskOpen = false;
+      return;
+    }
+    const t = state.task;
+    els.taskChip.classList.add("on");
+    if (t) {
+      els.taskChip.classList.remove("empty");
+      els.taskChip.innerHTML = `📋 <span class="ref">${esc(t.customerRef)}</span>`;
+      els.doneBtn.style.display = "inline-block";
+    } else {
+      els.doneBtn.style.display = "none";
+      if (state.queueWaiting > 0) {
+        els.taskChip.classList.remove("empty");
+        els.taskChip.innerHTML = `📥 استلم مهمة (${state.queueWaiting})`;
+      } else {
+        els.taskChip.classList.add("empty");
+        els.taskChip.innerHTML = `📋 لا مهام`;
+      }
+    }
+    if (state.taskOpen) renderTaskPanel();
+  }
+
+  function renderTaskPanel() {
+    if (!els) return;
+    els.tpanelWaiting.textContent = `منتظر: ${state.queueWaiting || 0}`;
+    const t = state.task;
+    if (!t) {
+      els.tbody.innerHTML =
+        `<div class="empty">لا توجد مهمة حالية.</div>` +
+        (state.queueWaiting > 0 ? `<button class="primary" id="pullBtn">📥 استلم التالي</button>` : "");
+      const pb = els.tbody.querySelector("#pullBtn");
+      if (pb) pb.addEventListener("click", pullNext);
+      return;
+    }
+    const prCls = t.priority === "vip" ? "vip" : t.priority === "high" ? "high" : "normal";
+    const prLbl = t.priority === "vip" ? "VIP" : t.priority === "high" ? "مهمة" : "عادية";
+    els.tbody.innerHTML = `
+      <div class="cust">${esc(t.customerRef)} <span class="badge ${prCls}">${prLbl}</span></div>
+      <div class="meta"><span>${esc(CH_LABEL[t.channel] || t.channel)}</span><span>⏱ منذ ${fmtAgo(t.assignedAt)}</span></div>
+      <div class="prev">${esc(t.preview) || "—"}</div>
+      <div class="row">
+        ${t.link ? `<button id="openConv">🔗 فتح المحادثة</button>` : ""}
+        <button class="done" id="doneConv">✅ تم، التالي</button>
+      </div>`;
+    const oc = els.tbody.querySelector("#openConv");
+    if (oc && t.link) oc.addEventListener("click", () => { if (/^https?:\/\//.test(t.link)) window.open(t.link, "_blank", "noopener"); });
+    els.tbody.querySelector("#doneConv").addEventListener("click", doneNext);
+  }
+
+  function toggleTaskPanel() {
+    state.taskOpen = !state.taskOpen;
+    els.tpanel.classList.toggle("on", state.taskOpen);
+    if (state.taskOpen) {
+      els.panel.classList.remove("on");
+      state.chatOpen = false;
+      renderTaskPanel();
+    }
+  }
+
+  async function pullNext() {
+    const r = await send("queueNext");
+    if (r.ok && r.data) {
+      state.task = r.data.task || null;
+      state.queueWaiting = r.data.queueWaiting || 0;
+      renderTask();
+      if (state.task) { beep(760, 0.1, 0.05); toast("📋 مهمة جديدة", `${state.task.customerRef} — ${state.task.preview || ""}`, true); }
+    }
+  }
+
+  async function doneNext() {
+    if (!state.task) return;
+    const r = await send("queueDone", { taskId: state.task.id });
+    if (r.ok && r.data) {
+      state.task = r.data.next || null;
+      state.queueWaiting = r.data.queueWaiting || 0;
+      beep(720, 0.08, 0.05);
+      renderTask();
+      if (state.task) toast("التالي", state.task.customerRef, false);
+      else toast("تم ✅", "لا مهام في الطابور حاليًا", false);
+    }
+  }
+
   // ---------- activity detection (Enter) ----------
   function isEditable(el) {
     if (!el) return false;
@@ -362,7 +500,19 @@
       extensionConnected: true,
     });
     state.mouseMoved = false;
-    if (r.ok && r.data) { state.live = r.data; state.peak = r.data.peak; render(); }
+    if (r.ok && r.data) {
+      state.live = r.data;
+      state.peak = r.data.peak;
+      // طابور ميتا: المهمة الحالية تأتي مع كل heartbeat (إسناد تلقائي في الوضع الإجباري)
+      const prevTaskId = state.task && state.task.id;
+      state.task = r.data.task || null;
+      state.queueWaiting = r.data.queueWaiting || 0;
+      if (r.data.queueStrict !== undefined) state.queueStrict = r.data.queueStrict;
+      if (state.task && state.task.id !== prevTaskId) {
+        toast("📋 مهمة جديدة", `${state.task.customerRef}${state.task.preview ? " — " + state.task.preview : ""}`, true);
+      }
+      render();
+    }
   }
   let mouseTimer = 0;
   document.addEventListener("mousemove", () => {

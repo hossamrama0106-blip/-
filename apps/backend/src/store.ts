@@ -3,9 +3,12 @@
 import {
   ActivityType,
   BreakType,
+  Channel,
   EmployeeStatus,
   NotificationType,
   PresenceState,
+  QueuePriority,
+  QueueStatus,
   RealtimeEvent,
   Role,
   seedEmployees,
@@ -22,6 +25,7 @@ import {
   type NotificationItem,
   type PointEntry,
   type HistoryItem,
+  type QueueTask,
   type ReplyReview,
   type Screenshot,
   type ShiftSession,
@@ -34,7 +38,11 @@ import { notifyNtfy, pushViolationToSheet } from "./integrations";
 interface Config {
   googleSheetWebhook: string;
   ntfyTopic: string;
+  queueStrict: boolean; // طابور ميتا الإجباري: إسناد تلقائي ومنع اختيار العملاء يدويًا
 }
+
+/** ترتيب أولوية الطابور: vip أولاً ثم high ثم normal، وداخل كل مستوى الأقدم أولاً (FIFO) */
+const PRIORITY_RANK: Record<string, number> = { vip: 0, high: 1, normal: 2 };
 
 function categoryOf(title: string): string {
   const t = (title || "").toLowerCase();
@@ -99,8 +107,13 @@ class Store {
   nightMode = false;
   timeline: TimelineEvent[] = [];
   history: HistoryItem[] = [];
+  queue: QueueTask[] = []; // طابور ميتا الإجباري
   private commands = new Map<string, string[]>();
-  config: Config = { googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "", ntfyTopic: process.env.NTFY_TOPIC || "" };
+  config: Config = {
+    googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "",
+    ntfyTopic: process.env.NTFY_TOPIC || "",
+    queueStrict: process.env.QUEUE_STRICT !== "0",
+  };
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
 
   constructor() {
@@ -123,6 +136,7 @@ class Store {
         comments: 0,
         orders: 0,
         openNoReply: 0,
+        tasksDone: 0,
         avgGapMs: null,
         typingWpm: null,
         activeMs: 0,
@@ -175,6 +189,7 @@ class Store {
   removeEmployee(id: string): boolean {
     const i = this.employees.findIndex((e) => e.id === id);
     if (i < 0) return false;
+    this.releaseEmployeeTasks(id); // رجّع محادثاته للطابور قبل الحذف
     this.employees.splice(i, 1);
     this.live.delete(id);
     hub.broadcast(RealtimeEvent.EMPLOYEE_REMOVED, { id });
@@ -268,6 +283,7 @@ class Store {
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "start", session: s });
     this.announceTeam(employeeId, "بدأ الشيفت");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
+    if (this.config.queueStrict) this.assignNext(employeeId); // استلام أول محادثة تلقائيًا
     return s;
   }
   endShift(employeeId: string, handoverNotes: string | null): ShiftSession | null {
@@ -277,6 +293,7 @@ class Store {
     s.handoverNotes = handoverNotes;
     const l = this.getLive(employeeId);
     l.presence = PresenceState.SHIFT_ENDED;
+    this.releaseEmployeeTasks(employeeId); // رجّع محادثاته للطابور
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "end", session: s });
     this.announceTeam(employeeId, "أنهى الشيفت");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
@@ -298,6 +315,7 @@ class Store {
         : type === BreakType.WC
           ? PresenceState.WC
           : PresenceState.BREAK;
+    this.releaseEmployeeTasks(employeeId); // رجّع محادثته للطابور أثناء البريك
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "break_start", break: b });
     this.announceTeam(employeeId, type === BreakType.PRAYER ? "في استراحة صلاة" : type === BreakType.WC ? "في الحمام" : "في بريك");
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
@@ -311,6 +329,7 @@ class Store {
     l.presence = PresenceState.WORKING;
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "break_end", break: b });
     hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
+    if (this.config.queueStrict) this.assignNext(employeeId); // استلام محادثة بعد البريك
     return b;
   }
 
@@ -383,6 +402,7 @@ class Store {
         avgGapMs: c.avgGapMs,
         typingWpm: l.typingWpm || c.typingWpm || 0,
         points: pts,
+        tasksDone: this.tasksDoneToday(e.id),
         online: l.online,
         status: l.status,
       };
@@ -395,6 +415,7 @@ class Store {
         fastest: by(rows.filter((r) => r.avgGapMs != null), (r) => r.avgGapMs ?? Infinity, 1)?.employeeId ?? null,
         mostReplies: by(rows, (r) => r.msgs)?.employeeId ?? null,
         mostOrders: by(rows, (r) => r.orders)?.employeeId ?? null,
+        mostTasks: by(rows, (r) => r.tasksDone)?.employeeId ?? null,
         slowest: by(rows.filter((r) => r.avgGapMs != null), (r) => r.avgGapMs ?? -1)?.employeeId ?? null,
         fewestReplies: by(rows, (r) => r.msgs, 1)?.employeeId ?? null,
         bestOverall: by(rows, (r) => r.points * 10 + r.msgs + r.orders * 3)?.employeeId ?? null,
@@ -683,7 +704,180 @@ class Store {
   }
   setConfig(patch: Partial<Config>): Config {
     Object.assign(this.config, patch);
+    if (patch.queueStrict !== undefined) this.bumpQueue();
     return this.getConfig();
+  }
+
+  // ---------- طابور ميتا الإجباري (توزيع عادل يمنع التهرب من العملاء) ----------
+  private bumpQueue(): void {
+    hub.broadcast(RealtimeEvent.QUEUE, this.queueStats());
+  }
+  /** vip أولاً ثم high ثم normal، وداخل كل مستوى الأقدم أولاً (FIFO) */
+  private sortWaiting(a: QueueTask, b: QueueTask): number {
+    const pr = (PRIORITY_RANK[a.priority] ?? 9) - (PRIORITY_RANK[b.priority] ?? 9);
+    if (pr !== 0) return pr;
+    return new Date(a.enqueuedAt).getTime() - new Date(b.enqueuedAt).getTime();
+  }
+
+  enqueueTask(input: { channel?: string; customerRef: string; preview?: string; link?: string | null; priority?: string }): QueueTask {
+    const t: QueueTask = {
+      id: uid("task"),
+      channel: (input.channel as QueueTask["channel"]) ?? Channel.MESSENGER,
+      customerRef: input.customerRef,
+      preview: (input.preview ?? "").slice(0, 200),
+      link: input.link ?? null,
+      priority: (input.priority as QueueTask["priority"]) ?? QueuePriority.NORMAL,
+      status: QueueStatus.WAITING,
+      enqueuedAt: nowIso(),
+      assignedTo: null,
+      assignedAt: null,
+      doneAt: null,
+      waitMs: null,
+      handleMs: null,
+    };
+    this.queue.push(t);
+    const waiting = this.queue.filter((x) => x.status === QueueStatus.WAITING).length;
+    if (waiting >= Thresholds.QUEUE_PRESSURE) {
+      this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `طابور ميتا: ${waiting} محادثة منتظرة` });
+    }
+    this.bumpQueue();
+    return t;
+  }
+
+  currentTask(employeeId: string): QueueTask | null {
+    return this.queue.find((t) => t.assignedTo === employeeId && t.status === QueueStatus.ASSIGNED) ?? null;
+  }
+  waitingCount(): number {
+    return this.queue.filter((t) => t.status === QueueStatus.WAITING).length;
+  }
+
+  /** إسناد المهمة التالية لموظف (الأعلى أولوية ثم الأقدم). إسناد واحد في المرة. */
+  assignNext(employeeId: string): QueueTask | null {
+    const existing = this.currentTask(employeeId);
+    if (existing) return existing;
+    const emp = this.findEmployee(employeeId);
+    if (!emp || !emp.active) return null;
+    const live = this.getLive(employeeId);
+    if (live.presence !== PresenceState.WORKING) return null; // لا تُسنَد لمن في بريك/خارج الشيفت
+    const next = this.queue.filter((t) => t.status === QueueStatus.WAITING).sort((a, b) => this.sortWaiting(a, b))[0];
+    if (!next) return null;
+    next.status = QueueStatus.ASSIGNED;
+    next.assignedTo = employeeId;
+    next.assignedAt = nowIso();
+    next.waitMs = Date.now() - new Date(next.enqueuedAt).getTime();
+    this.addTimeline(employeeId, "activity", `استلم محادثة ${next.customerRef}`, "work");
+    this.bumpQueue();
+    return next;
+  }
+
+  /** إنهاء مهمة + إسناد التالية تلقائيًا (زر "تم، التالي") */
+  completeTask(employeeId: string, taskId?: string): { done: QueueTask | null; next: QueueTask | null } {
+    const t = taskId
+      ? this.queue.find((x) => x.id === taskId && x.assignedTo === employeeId)
+      : this.currentTask(employeeId);
+    let done: QueueTask | null = null;
+    if (t && t.status === QueueStatus.ASSIGNED) {
+      t.status = QueueStatus.DONE;
+      t.doneAt = nowIso();
+      t.handleMs = t.assignedAt ? Date.now() - new Date(t.assignedAt).getTime() : null;
+      done = t;
+      this.getCounters(employeeId).tasksDone += 1; // عدّاد دائم لا يتأثر بتنظيف الطابور
+      // الإنهاء يُحتسب ردًّا (يدخل عدّادات الأداء — مقياس عادل لا يُتلاعب به)
+      this.addActivity({ employeeId, type: ActivityType.REPLY, channel: t.channel, ref: t.customerRef });
+    }
+    const next = this.config.queueStrict ? this.assignNext(employeeId) : null;
+    this.bumpQueue();
+    return { done, next };
+  }
+
+  /** إسناد يدوي من الإدارة لموظف محدّد */
+  assignTask(taskId: string, employeeId: string): QueueTask | null {
+    const t = this.queue.find((x) => x.id === taskId);
+    if (!t || t.status === QueueStatus.DONE) return null;
+    const cur = this.currentTask(employeeId);
+    if (cur && cur.id !== t.id) { cur.status = QueueStatus.WAITING; cur.assignedTo = null; cur.assignedAt = null; }
+    t.status = QueueStatus.ASSIGNED;
+    t.assignedTo = employeeId;
+    t.assignedAt = nowIso();
+    if (t.waitMs == null) t.waitMs = Date.now() - new Date(t.enqueuedAt).getTime();
+    this.addTimeline(employeeId, "activity", `أسندت لك الإدارة محادثة ${t.customerRef}`, "work");
+    this.bumpQueue();
+    return t;
+  }
+
+  /** تخطّي/إرجاع مهمة للطابور */
+  skipTask(taskId: string, reason?: string): QueueTask | null {
+    const t = this.queue.find((x) => x.id === taskId);
+    if (!t) return null;
+    const who = t.assignedTo;
+    t.status = QueueStatus.WAITING;
+    t.assignedTo = null;
+    t.assignedAt = null;
+    if (who) this.addTimeline(who, "activity", `تخطّى محادثة ${t.customerRef}${reason ? " — " + reason : ""}`, "other");
+    this.bumpQueue();
+    return t;
+  }
+
+  /** عند البريك/إنهاء الشيفت: رجّع مهمة الموظف للطابور (العميل مايستناش) */
+  releaseEmployeeTasks(employeeId: string): void {
+    let changed = false;
+    for (const t of this.queue) {
+      if (t.assignedTo === employeeId && t.status === QueueStatus.ASSIGNED) {
+        t.status = QueueStatus.WAITING;
+        t.assignedTo = null;
+        t.assignedAt = null;
+        changed = true;
+      }
+    }
+    if (changed) this.bumpQueue();
+  }
+
+  queueStats() {
+    const waiting = this.queue.filter((t) => t.status === QueueStatus.WAITING).sort((a, b) => this.sortWaiting(a, b));
+    const assigned = this.queue.filter((t) => t.status === QueueStatus.ASSIGNED);
+    // المنجَز اليوم من العدّاد الدائم (لا يتأثر بتنظيف مصفوفة الطابور عند تجاوز الحد)
+    const dayStart = new Date();
+    dayStart.setHours(0, 0, 0, 0);
+    // المتوسطات من المهام المنتهية المتبقية في الذاكرة (نافذة متحرّكة لآخر المهام)
+    const recentDone = this.queue.filter((t) => t.status === QueueStatus.DONE && t.doneAt && new Date(t.doneAt).getTime() >= dayStart.getTime());
+    const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
+    const now = Date.now();
+    const perEmployee = this.employees.map((e) => ({
+      employeeId: e.id,
+      name: e.name,
+      color: e.avatarColor,
+      current: this.currentTask(e.id),
+      doneToday: this.tasksDoneToday(e.id),
+    }));
+    return {
+      strict: this.config.queueStrict,
+      waiting: waiting.length,
+      assigned: assigned.length,
+      doneToday: perEmployee.reduce((a, p) => a + p.doneToday, 0),
+      avgWaitMs: avg(recentDone.map((t) => t.waitMs ?? 0).filter((n) => n > 0)),
+      avgHandleMs: avg(recentDone.map((t) => t.handleMs ?? 0).filter((n) => n > 0)),
+      oldestWaitMs: waiting.length ? now - new Date(waiting[0].enqueuedAt).getTime() : null,
+      waitingList: waiting.slice(0, 12),
+      perEmployee,
+    };
+  }
+
+  /** عدد المهام المنجزة اليوم لموظف (عدّاد دائم — لمقارنة الأداء) */
+  tasksDoneToday(employeeId: string): number {
+    return this.getCounters(employeeId).tasksDone;
+  }
+
+  /** مسح الطابور: تصعيد المهام المنتظرة/المسندة الطويلة (يُستدعى من tick) */
+  queueScan(): void {
+    const now = Date.now();
+    for (const t of this.queue) {
+      if (t.status === QueueStatus.WAITING && now - new Date(t.enqueuedAt).getTime() > Thresholds.QUEUE_WAIT_WARN_MS) {
+        this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `محادثة منتظرة في الطابور أكثر من 3 دقائق` });
+      }
+      if (t.status === QueueStatus.ASSIGNED && t.assignedTo && t.assignedAt && now - new Date(t.assignedAt).getTime() > Thresholds.QUEUE_HANDLE_WARN_MS) {
+        this.raiseAlert({ employeeId: t.assignedTo, kind: "deal_at_risk", severity: ViolationSeverity.MEDIUM, message: `ماسك محادثة ${t.customerRef} بدون إنهاء أكثر من 5 دقائق` });
+      }
+    }
   }
 
   // ---------- background tick ----------
@@ -730,6 +924,8 @@ class Store {
         message: `ضغط عالي: ${this.inbox.unreadMessages} رسالة غير مقروءة`,
       });
     }
+    // تصعيد تأخّر الطابور
+    this.queueScan();
   }
 
   // ---------- auto-purge (تنظيف ذاتي للذاكرة — الوعد في الخطة: حذف الروتيني بعد 48 ساعة) ----------
@@ -749,6 +945,20 @@ class Store {
     cap(this.points, 2000);
     cap(this.timeline, 3000);
     cap(this.history, 5000);
+    // طابور: احذف المنتهية/المتخطّاة الأقدم من 48 ساعة ثم احتفظ بحد أقصى (المنتظرة/المسندة تبقى دائمًا)
+    this.queue = this.queue.filter(
+      (t) => t.status === QueueStatus.WAITING || t.status === QueueStatus.ASSIGNED || !t.doneAt || now - new Date(t.doneAt).getTime() < Thresholds.PURGE_ROUTINE_MS,
+    );
+    if (this.queue.length > Thresholds.QUEUE_MAX) {
+      let over = this.queue.length - Thresholds.QUEUE_MAX;
+      this.queue = this.queue.filter((t) => {
+        if (over > 0 && (t.status === QueueStatus.DONE || t.status === QueueStatus.SKIPPED)) {
+          over--;
+          return false;
+        }
+        return true;
+      });
+    }
     // تنبيهات: احذف المحلولة الأقدم من ساعة واحتفظ بآخر 300
     this.alerts = this.alerts.filter((a) => !a.resolvedAt || now - new Date(a.resolvedAt).getTime() < 60 * 60 * 1000);
     cap(this.alerts, 300);

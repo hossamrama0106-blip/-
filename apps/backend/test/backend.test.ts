@@ -69,3 +69,53 @@ test("store: إضافة/حذف موظف", () => {
   assert.equal(store.removeEmployee(e.id), true);
   assert.equal(store.findEmployee(e.id), null);
 });
+
+// ---------- queue (طابور ميتا الإجباري) ----------
+test("queue: الإسناد يحترم الأولوية (vip قبل normal)", () => {
+  store.queue.length = 0;
+  store.startShift("emp_010");
+  store.releaseEmployeeTasks("emp_010");
+  store.enqueueTask({ customerRef: "QT1-n", priority: "normal" });
+  const vip = store.enqueueTask({ customerRef: "QT1-v", priority: "vip" });
+  const got = store.assignNext("emp_010");
+  assert.equal(got?.id, vip.id);
+  assert.equal(store.currentTask("emp_010")?.id, vip.id);
+});
+
+test("queue: تم،التالي يُنهي المهمة ويُسند التالية تلقائيًا", () => {
+  store.queue.length = 0;
+  store.startShift("emp_011");
+  store.releaseEmployeeTasks("emp_011");
+  const t1 = store.enqueueTask({ customerRef: "QT2-a" });
+  const t2 = store.enqueueTask({ customerRef: "QT2-b" });
+  assert.equal(store.assignNext("emp_011")?.id, t1.id);
+  // إسناد واحد في المرة: الاستدعاء الثاني يرجّع نفس المهمة
+  assert.equal(store.assignNext("emp_011")?.id, t1.id);
+  const doneBefore = store.tasksDoneToday("emp_011");
+  const r = store.completeTask("emp_011");
+  assert.equal(r.done?.id, t1.id);
+  assert.equal(r.next?.id, t2.id);
+  assert.equal(store.tasksDoneToday("emp_011"), doneBefore + 1);
+});
+
+test("queue: البريك يرجّع المهمة للطابور", () => {
+  store.queue.length = 0;
+  store.startShift("emp_012");
+  store.releaseEmployeeTasks("emp_012");
+  const t = store.enqueueTask({ customerRef: "QT3-a" });
+  store.assignNext("emp_012");
+  assert.equal(store.currentTask("emp_012")?.id, t.id);
+  store.startBreak("emp_012", "break");
+  assert.equal(store.currentTask("emp_012"), null);
+  assert.equal(store.queue.find((x) => x.id === t.id)?.status, "waiting");
+  store.endBreak("emp_012");
+});
+
+test("queue: الإحصائيات تعدّ المنتظر والمسند", () => {
+  store.queue.length = 0;
+  store.enqueueTask({ customerRef: "QT4-a" });
+  store.enqueueTask({ customerRef: "QT4-b" });
+  const s = store.queueStats();
+  assert.equal(s.waiting, 2);
+  assert.equal(s.assigned, 0);
+});

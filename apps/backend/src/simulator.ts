@@ -1,6 +1,6 @@
 // مُحاكي نشاط — يحرّك الموظفين التجريبيين عشان الداشبورد يبان حي قبل ربط الإكستنشن الحقيقي.
 // يُفعّل بـ SIMULATE=1 (افتراضي في التطوير). أوقفه بـ SIMULATE=0.
-import { ActivityType, BreakType, Channel, EmployeeStatus } from "@khiam/shared";
+import { ActivityType, BreakType, Channel, EmployeeStatus, QueuePriority } from "@khiam/shared";
 import { store } from "./store";
 import { evaluateLocal } from "./ai";
 
@@ -13,6 +13,19 @@ const SAMPLE_CONVOS: { role: "customer" | "agent"; text: string }[][] = [
   [{ role: "customer", text: "المنتج ده حلو قوي، سعره كام؟" }, { role: "agent", text: "تسلم ذوقك 🙏 سعره 299 جنيه ومتوفر كل المقاسات" }],
 ];
 
+// رسائل عملاء تدخل طابور ميتا
+const CUSTOMER_MSGS = [
+  "السلام عليكم، المنتج ده متوفر؟",
+  "بكام الأوردر مع التوصيل؟",
+  "عايز أعرف المقاسات المتاحة",
+  "ممكن صور أكتر للمنتج؟",
+  "الأوردر وصل امتى؟",
+  "عايز أرجّع القطعة، إزاي؟",
+  "في خصم لو أخدت قطعتين؟",
+  "التوصيل بيوصل المنصورة؟",
+  "لسه مستني الرد من امبارح 😠",
+  "تمام هأكّد الأوردر",
+];
 const CHANNELS = [Channel.MESSENGER, Channel.INSTAGRAM, Channel.WHATSAPP, Channel.COMMENTS];
 const WINDOWS = [
   "Meta Business Suite — الوارد",
@@ -24,11 +37,27 @@ const WINDOWS = [
 ];
 const pick = <T>(a: readonly T[]) => a[Math.floor(Math.random() * a.length)];
 const chance = (p: number) => Math.random() < p;
+// أولوية الطابور: الأغلب عادية، بعضها مهمة، القليل VIP
+const pickPriority = () => (chance(0.08) ? QueuePriority.VIP : chance(0.2) ? QueuePriority.HIGH : QueuePriority.NORMAL);
+let custSeq = 100;
+function enqueueCustomer() {
+  custSeq++;
+  store.enqueueTask({
+    channel: pick(CHANNELS),
+    customerRef: `عميل #${custSeq}`,
+    preview: pick(CUSTOMER_MSGS),
+    priority: pickPriority(),
+    link: "https://business.facebook.com/latest/inbox",
+  });
+}
 
 export function startSimulator(): void {
   if (process.env.SIMULATE === "0") return;
 
-  // بدء شيفت لمعظم الموظفين
+  // بذرة أولية لطابور ميتا (محادثات منتظرة)
+  for (let i = 0; i < 8; i++) enqueueCustomer();
+
+  // بدء شيفت لمعظم الموظفين (يستلم كل واحد محادثته تلقائيًا في الوضع الإجباري)
   for (const e of store.employees) {
     if (chance(0.8)) store.startShift(e.id);
   }
@@ -83,6 +112,23 @@ export function startSimulator(): void {
     const base = store.inbox.unreadMessages;
     const delta = Math.floor(Math.random() * 7) - 3;
     store.setInbox(Math.max(0, base + delta), Math.max(0, store.inbox.unreadComments + Math.floor(Math.random() * 3) - 1));
+
+    // ديناميكية طابور ميتا: محادثات عملاء جديدة + إنهاء + استلام تلقائي للفاضي
+    const newTasks = 1 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < newTasks; i++) enqueueCustomer();
+    if (chance(0.07)) for (let i = 0; i < 6; i++) enqueueCustomer(); // دفعة ضغط أحيانًا (ذروة)
+    const strict = store.getConfig().queueStrict;
+    for (const e of store.employees) {
+      const live = store.getLive(e.id);
+      if (live.presence !== "working") continue;
+      const cur = store.currentTask(e.id);
+      const lazy = e.id.endsWith("4") || e.id.endsWith("8"); // كسالى يمسكوا المحادثة بدون إنهاء → تصعيد
+      if (cur) {
+        if (chance(lazy ? 0.08 : 0.5)) store.completeTask(e.id, cur.id); // رد + التالي تلقائيًا
+      } else if (strict) {
+        store.assignNext(e.id); // استلام محادثة جديدة لو فاضي
+      }
+    }
 
     // بريك عشوائي
     for (const e of store.employees) {

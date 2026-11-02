@@ -45,6 +45,23 @@ export const ActivityType = {
 } as const;
 export type ActivityType = (typeof ActivityType)[keyof typeof ActivityType];
 
+/** أولوية مهمة في طابور ميتا الإجباري */
+export const QueuePriority = {
+  NORMAL: "normal", // عادية
+  HIGH: "high", // مهمة
+  VIP: "vip", // عميل مميز/أوردر على وشك الضياع
+} as const;
+export type QueuePriority = (typeof QueuePriority)[keyof typeof QueuePriority];
+
+/** حالة مهمة في الطابور */
+export const QueueStatus = {
+  WAITING: "waiting", // في الانتظار (لم تُسنَد)
+  ASSIGNED: "assigned", // مُسنَدة لموظف ويعالجها
+  DONE: "done", // تم الرد/الإنهاء
+  SKIPPED: "skipped", // تم تخطّيها/إلغاؤها
+} as const;
+export type QueueStatus = (typeof QueueStatus)[keyof typeof QueueStatus];
+
 /** قناة العمل (من فين جه النشاط) */
 export const Channel = {
   MESSENGER: "messenger",
@@ -101,6 +118,7 @@ export const RealtimeEvent = {
   EMPLOYEE_UPSERT: "employee_upsert",
   EMPLOYEE_REMOVED: "employee_removed",
   ALERT: "alert",
+  QUEUE: "queue", // تغيّر حالة طابور ميتا
 } as const;
 export type RealtimeEvent = (typeof RealtimeEvent)[keyof typeof RealtimeEvent];
 
@@ -112,5 +130,8 @@ export const Thresholds = {
   CHERRY_PICK_LIMIT: 3, // فتح وخروج بدون رد > 3 مرات = تهرب من عميل
   QUEUE_PRESSURE: 15, // عدد رسائل الانتظار اللي يعتبر ضغط
   PEAK_UNREAD: 25, // عتبة وضع الذروة (Peak Hour Turbo)
+  QUEUE_WAIT_WARN_MS: 3 * 60 * 1000, // مهمة منتظرة بالطابور أكثر من 3 دقائق = تصعيد
+  QUEUE_HANDLE_WARN_MS: 5 * 60 * 1000, // موظف ماسك مهمة بدون إنهاء أكثر من 5 دقائق = تنبيه
+  QUEUE_MAX: 300, // أقصى عدد مهام محفوظة في الذاكرة
   PURGE_ROUTINE_MS: 48 * 60 * 60 * 1000, // حذف البيانات الروتينية بعد 48 ساعة
 } as const;

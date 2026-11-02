@@ -51,6 +51,9 @@ app.use("/api/*", async (c, next) => {
     path === "/api/timeline" ||
     (path === "/api/history" && m === "GET") ||
     path === "/api/settings" ||
+    path === "/api/queue" ||
+    (path === "/api/queue/enqueue" && m === "POST") ||
+    (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
   if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
 
@@ -58,6 +61,7 @@ app.use("/api/*", async (c, next) => {
     const SELF_POST = new Set([
       "/api/presence", "/api/activity", "/api/shift/start", "/api/shift/end",
       "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots", "/api/history",
+      "/api/queue/next", "/api/queue/done",
     ]);
     if (m === "POST" && SELF_POST.has(path)) {
       let body: any = {};
@@ -67,6 +71,7 @@ app.use("/api/*", async (c, next) => {
     if (m === "GET" && path === "/api/notifications" && c.req.query("to") !== id.id) return c.json({ error: "forbidden" }, 403);
     if (m === "GET" && path === "/api/chat" && c.req.query("me") !== id.id) return c.json({ error: "forbidden" }, 403);
     if (m === "GET" && path === "/api/reviews" && c.req.query("employeeId") !== id.id) return c.json({ error: "forbidden" }, 403);
+    if (m === "GET" && path === "/api/queue/mine" && c.req.query("employeeId") !== id.id) return c.json({ error: "forbidden" }, 403);
   }
   await next();
 });
@@ -175,7 +180,14 @@ app.post("/api/presence", async (c) => {
   }>();
   const live = store.heartbeat(body.employeeId, body as any);
   const commands = store.popCommands(body.employeeId);
-  return c.json({ ...live, commands, peak: store.peakStatus() });
+  return c.json({
+    ...live,
+    commands,
+    peak: store.peakStatus(),
+    task: store.currentTask(body.employeeId),
+    queueWaiting: store.waitingCount(),
+    queueStrict: store.getConfig().queueStrict,
+  });
 });
 
 // ---------- shifts / breaks ----------
@@ -299,6 +311,34 @@ app.post("/api/inbox", async (c) => {
   return c.json(store.setInbox(unreadMessages, unreadComments));
 });
 
+// ---------- طابور ميتا الإجباري ----------
+app.get("/api/queue", (c) => c.json(store.queueStats()));
+app.post("/api/queue/enqueue", async (c) => {
+  const body = await c.req.json<{ channel?: string; customerRef: string; preview?: string; link?: string; priority?: string }>();
+  if (!body.customerRef) return c.json({ error: "customerRef required" }, 400);
+  return c.json(store.enqueueTask(body), 201);
+});
+app.post("/api/queue/next", async (c) => {
+  const { employeeId } = await c.req.json<{ employeeId: string }>();
+  return c.json({ task: store.assignNext(employeeId), queueWaiting: store.waitingCount() });
+});
+app.post("/api/queue/done", async (c) => {
+  const { employeeId, taskId } = await c.req.json<{ employeeId: string; taskId?: string }>();
+  const r = store.completeTask(employeeId, taskId);
+  return c.json({ ...r, queueWaiting: store.waitingCount() });
+});
+app.get("/api/queue/mine", (c) => c.json(store.currentTask(c.req.query("employeeId") ?? "")));
+app.post("/api/queue/:id/assign", async (c) => {
+  const { employeeId } = await c.req.json<{ employeeId: string }>();
+  const t = store.assignTask(c.req.param("id"), employeeId);
+  return t ? c.json(t) : c.json({ error: "not found" }, 404);
+});
+app.post("/api/queue/:id/skip", async (c) => {
+  const { reason } = await c.req.json<{ reason?: string }>().catch(() => ({ reason: undefined }));
+  const t = store.skipTask(c.req.param("id"), reason);
+  return t ? c.json(t) : c.json({ error: "not found" }, 404);
+});
+
 // ---------- alerts ----------
 app.get("/api/alerts", (c) => c.json(store.alerts.filter((a) => !a.resolvedAt)));
 app.post("/api/alerts/:id/resolve", (c) => {
@@ -358,6 +398,7 @@ app.get("/api/snapshot", (c) =>
     nightMode: store.nightMode,
     aiMode: aiMode(),
     peak: store.peakStatus(),
+    queue: store.queueStats(),
   }),
 );
 

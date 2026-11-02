@@ -1,7 +1,7 @@
 // حالة الداشبورد + الاتصال اللحظي (SSE)
 import { create } from "zustand";
 import { RealtimeEvent, type Alert, type Employee, type InboxSnapshot, type LiveStatus, type NotificationItem, type Violation } from "@khiam/shared";
-import { api, getToken, setToken, type Leaderboard, type Snapshot } from "./api";
+import { api, getToken, setToken, type Leaderboard, type QueueStats, type Snapshot } from "./api";
 
 interface DashState {
   connected: boolean;
@@ -13,6 +13,7 @@ interface DashState {
   employees: Employee[];
   live: Record<string, LiveStatus>;
   leaderboard: Leaderboard | null;
+  queue: QueueStats | null;
   inbox: InboxSnapshot;
   alerts: Alert[];
   violations: Violation[];
@@ -46,6 +47,7 @@ export const useDash = create<DashState>((set, get) => ({
   employees: [],
   live: {},
   leaderboard: null,
+  queue: null,
   inbox: { unreadMessages: 0, unreadComments: 0, at: "" },
   alerts: [],
   violations: [],
@@ -68,6 +70,7 @@ export const useDash = create<DashState>((set, get) => ({
       employees: snap.employees,
       live: snap.live,
       leaderboard: snap.leaderboard,
+      queue: snap.queue,
       inbox: snap.inbox,
       alerts: snap.alerts,
       violations: snap.violations,
@@ -122,6 +125,11 @@ export const useDash = create<DashState>((set, get) => ({
     es.addEventListener(RealtimeEvent.NOTIFICATION, (e: MessageEvent) => {
       const { payload } = JSON.parse(e.data) as { payload: NotificationItem };
       set((s) => ({ notifications: [payload, ...s.notifications.filter((n) => n.id !== payload.id)].slice(0, 100) }));
+    });
+
+    es.addEventListener(RealtimeEvent.QUEUE, (e: MessageEvent) => {
+      const { payload } = JSON.parse(e.data) as { payload: QueueStats };
+      set({ queue: payload });
     });
 
     // عدّادات/صندوق الوارد: نحدّث اللوحة كل فترة بدل كل حدث

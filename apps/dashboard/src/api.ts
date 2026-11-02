@@ -6,6 +6,7 @@ import type {
   InboxSnapshot,
   LiveStatus,
   NotificationItem,
+  QueueTask,
   Violation,
 } from "@khiam/shared";
 
@@ -41,12 +42,32 @@ export interface LeaderboardRow {
   avgGapMs: number | null;
   typingWpm: number;
   points: number;
+  tasksDone: number;
   online: boolean;
   status: string;
 }
 export interface Leaderboard {
   rows: LeaderboardRow[];
   highlights: Record<string, string | null>;
+}
+
+export interface QueuePerEmployee {
+  employeeId: string;
+  name: string;
+  color: string;
+  current: QueueTask | null;
+  doneToday: number;
+}
+export interface QueueStats {
+  strict: boolean;
+  waiting: number;
+  assigned: number;
+  doneToday: number;
+  avgWaitMs: number | null;
+  avgHandleMs: number | null;
+  oldestWaitMs: number | null;
+  waitingList: QueueTask[];
+  perEmployee: QueuePerEmployee[];
 }
 
 export interface ReviewRow {
@@ -71,6 +92,7 @@ export interface Snapshot {
   reviews: ReviewRow[];
   nightMode: boolean;
   aiMode: string;
+  queue: QueueStats;
 }
 
 export const api = {
@@ -101,9 +123,19 @@ export const api = {
     http(`/employees/${id}/command`, { method: "POST", body: JSON.stringify({ cmd }) }),
   screenshotsFor: (employeeId: string) =>
     http<Array<{ id: string; dataUrl: string; at: string }>>(`/screenshots?employeeId=${encodeURIComponent(employeeId)}`),
-  getSettings: () => http<{ googleSheetWebhook: string; ntfyTopic: string }>("/settings"),
-  setSettings: (body: { googleSheetWebhook?: string; ntfyTopic?: string }) =>
-    http<{ googleSheetWebhook: string; ntfyTopic: string }>("/settings", { method: "POST", body: JSON.stringify(body) }),
+  getSettings: () => http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings"),
+  setSettings: (body: { googleSheetWebhook?: string; ntfyTopic?: string; queueStrict?: boolean }) =>
+    http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings", { method: "POST", body: JSON.stringify(body) }),
+
+  queue: () => http<QueueStats>("/queue"),
+  queueNext: (employeeId: string) =>
+    http<{ task: QueueTask | null; queueWaiting: number }>("/queue/next", { method: "POST", body: JSON.stringify({ employeeId }) }),
+  enqueueTask: (data: { customerRef: string; channel?: string; preview?: string; priority?: string; link?: string }) =>
+    http<QueueTask>("/queue/enqueue", { method: "POST", body: JSON.stringify(data) }),
+  assignTask: (id: string, employeeId: string) =>
+    http<QueueTask>(`/queue/${id}/assign`, { method: "POST", body: JSON.stringify({ employeeId }) }),
+  skipTask: (id: string, reason?: string) =>
+    http<QueueTask>(`/queue/${id}/skip`, { method: "POST", body: JSON.stringify({ reason }) }),
   addPoint: (data: { employeeId: string; delta: number; reason: string }) =>
     http("/points", { method: "POST", body: JSON.stringify(data) }),
   resolveAlert: (id: string) => http(`/alerts/${id}/resolve`, { method: "POST" }),

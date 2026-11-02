@@ -3,7 +3,7 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, adminId, alerts } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, adminId, alerts, queue } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     inbox: s.inbox,
@@ -15,6 +15,7 @@ export default function TopBar() {
     setNight: s.setNight,
     setShowSettings: s.setShowSettings,
     alerts: s.alerts,
+    queue: s.queue,
   })));
 
   const activeCount = employees.filter((e) => live[e.id]?.online).length;
@@ -33,6 +34,7 @@ export default function TopBar() {
 
       <Stat label="رسائل غير مقروءة" value={inbox.unreadMessages} tone={inbox.unreadMessages >= 15 ? "bad" : "neutral"} />
       <Stat label="تعليقات غير مقروءة" value={inbox.unreadComments} tone={inbox.unreadComments >= 10 ? "warn" : "neutral"} />
+      {queue && <Stat label="طابور ميتا" value={queue.waiting} tone={queue.waiting >= 15 ? "bad" : queue.waiting >= 8 ? "warn" : "neutral"} />}
       <Stat label="موظفون نشطون" value={`${activeCount}/${employees.length}`} tone="good" />
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
       {inbox.unreadMessages >= 25 && (

@@ -39,6 +39,7 @@ export default function Leaderboard() {
               <th className="py-2 font-medium">رسائل</th>
               <th className="py-2 font-medium">تعليقات</th>
               <th className="py-2 font-medium">أوردرات</th>
+              <th className="py-2 font-medium">منجز الطابور</th>
               <th className="py-2 font-medium">متوسط الرد</th>
               <th className="py-2 font-medium">سرعة</th>
               <th className="py-2 font-medium">نقاط</th>
@@ -62,6 +63,7 @@ export default function Leaderboard() {
                 <td className="py-2 text-slate-200">{r.msgs}</td>
                 <td className="py-2 text-slate-200">{r.comments}</td>
                 <td className="py-2 text-slate-200">{r.orders}</td>
+                <td className="py-2 text-emerald-300 font-medium">{r.tasksDone}</td>
                 <td className="py-2 text-slate-400">{fmtGap(r.avgGapMs)}</td>
                 <td className="py-2 text-slate-400">{r.typingWpm}</td>
                 <td className={`py-2 font-bold ${r.points >= 0 ? "text-emerald-400" : "text-red-400"}`}>

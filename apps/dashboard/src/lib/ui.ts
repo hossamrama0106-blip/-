@@ -30,6 +30,7 @@ export const HIGHLIGHT_LABEL: Record<string, string> = {
   fastest: "⚡ الأسرع ردًا",
   mostReplies: "💬 الأكثر ردًا",
   mostOrders: "🛒 الأكثر أوردرات",
+  mostTasks: "📋 الأكثر إنجازًا بالطابور",
   slowest: "🐌 الأبطأ",
   fewestReplies: "📉 الأقل ردًا",
   bestOverall: "🏆 الأفضل عمومًا",

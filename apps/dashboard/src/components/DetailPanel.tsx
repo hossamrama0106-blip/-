@@ -6,11 +6,12 @@ import { api } from "../api";
 import { PRESENCE_LABEL, STATUS_META, clockAt, fmtGap, timeAgo } from "../lib/ui";
 
 export default function DetailPanel() {
-  const { selectedId, employees, live, leaderboard, adminId, select, openLive } = useDash(useShallow((s) => ({
+  const { selectedId, employees, live, leaderboard, queue, adminId, select, openLive } = useDash(useShallow((s) => ({
     selectedId: s.selectedId,
     employees: s.employees,
     live: s.live,
     leaderboard: s.leaderboard,
+    queue: s.queue,
     adminId: s.adminId,
     select: s.select,
     openLive: s.openLive,
@@ -44,6 +45,10 @@ export default function DetailPanel() {
   const l = live[emp.id];
   const row = leaderboard?.rows.find((r) => r.employeeId === emp.id);
   const meta = STATUS_META[l?.status ?? "offline"] ?? STATUS_META.offline;
+  const queueMine = queue?.perEmployee.find((p) => p.employeeId === emp.id);
+  const curTask = queueMine?.current ?? null;
+  const CH_LABEL: Record<string, string> = { messenger: "ماسنجر", instagram: "انستجرام", whatsapp: "واتساب", comments: "تعليقات", operix: "أوبريكس" };
+  const PR_LABEL: Record<string, string> = { vip: "VIP", high: "مهمة", normal: "عادية" };
 
   const act = async (key: string, fn: () => Promise<any>) => {
     setBusy(key);
@@ -108,6 +113,30 @@ export default function DetailPanel() {
           <Info label="متوسط الفجوة بين الردود" value={fmtGap(row?.avgGapMs ?? null)} />
           <Info label="فتح ولم يرد" value={String(row?.openNoReply ?? 0)} />
         </div>
+
+        {/* مهمة الطابور الحالية */}
+        <Section title={`مهمة الطابور · منجز اليوم: ${queueMine?.doneToday ?? 0}`}>
+          {curTask ? (
+            <div className="bg-ink-850 border border-ink-800 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="font-bold text-white">{curTask.customerRef}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-full border border-ink-700 bg-ink-800 text-slate-300">{PR_LABEL[curTask.priority]}</span>
+                <span className="text-[10px] text-slate-500">{CH_LABEL[curTask.channel] ?? curTask.channel}</span>
+                <span className="text-[10px] text-amber-400 mr-auto">منذ {timeAgo(curTask.assignedAt)}</span>
+              </div>
+              <div className="text-xs text-slate-300 mb-2">{curTask.preview || "—"}</div>
+              <div className="grid grid-cols-2 gap-2">
+                <ActBtn label="⏭ أسند التالي" onClick={() => act("qnext", () => api.queueNext(emp.id))} />
+                <ActBtn label="↩ تحرير المهمة" tone="bad" onClick={() => act("qrel", () => api.skipTask(curTask.id, "تحرير من الإدارة"))} />
+              </div>
+            </div>
+          ) : (
+            <div className="bg-ink-850 border border-ink-800 rounded-lg p-3 flex items-center justify-between">
+              <span className="text-xs text-slate-500">لا توجد مهمة مُسنَدة.</span>
+              <ActBtn label="⏭ أسند التالي" onClick={() => act("qnext", () => api.queueNext(emp.id))} />
+            </div>
+          )}
+        </Section>
 
         {/* أدوات الرقابة */}
         <Section title="الرقابة">
