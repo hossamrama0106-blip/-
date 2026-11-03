@@ -112,6 +112,7 @@ class Store {
   queue: QueueTask[] = []; // طابور ميتا الإجباري
   metrics: MetricPoint[] = []; // سلسلة زمنية لمؤشرات KPI
   audit: AuditEntry[] = []; // سجل تدقيق أفعال الإدارة (append-only، يُثبَّت ويُصدَّر)
+  sessionEpoch: Record<string, number> = {}; // employeeId → ms؛ أي توكن iat أقدم منه يُرفض (إبطال جلسات/logout فعّال)
   private commands = new Map<string, string[]>();
   config: Config = {
     googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "",
@@ -187,6 +188,7 @@ class Store {
     const emp = this.findEmployee(id);
     if (!emp) return null;
     Object.assign(emp, patch, { id: emp.id, createdAt: emp.createdAt });
+    if (patch.active === false) this.revokeSessions(id); // تعطيل الحساب = قطع الجلسة فورًا
     hub.broadcast(RealtimeEvent.EMPLOYEE_UPSERT, emp);
     return emp;
   }
@@ -194,6 +196,7 @@ class Store {
     const i = this.employees.findIndex((e) => e.id === id);
     if (i < 0) return false;
     this.releaseEmployeeTasks(id); // رجّع محادثاته للطابور قبل الحذف
+    this.revokeSessions(id); // اقطع أي توكن باقٍ للموظف المحذوف
     this.employees.splice(i, 1);
     this.live.delete(id);
     hub.broadcast(RealtimeEvent.EMPLOYEE_REMOVED, { id });
@@ -978,6 +981,17 @@ class Store {
     return this.audit.slice(-limit).reverse();
   }
 
+  // ---------- إبطال الجلسات (logout فعّال + قطع وصول فوري عند التعطيل/الحذف) ----------
+  /** يُبطل كل توكنات الموظف الصادرة قبل الآن (المدير يقطع الجلسة، أو الموظف يسجّل خروج). */
+  revokeSessions(employeeId: string): void {
+    this.sessionEpoch[employeeId] = Date.now();
+  }
+  /** توكن صالح فقط لو صدر بعد آخر إبطال لهذا الموظف. */
+  isTokenActive(employeeId: string, iat: number): boolean {
+    const epoch = this.sessionEpoch[employeeId];
+    return !epoch || iat >= epoch;
+  }
+
   // ---------- background tick ----------
   /** يعيد حساب الحالات ويطلق التنبيهات بناءً على أعمار الـ heartbeat */
   tick(): void {
@@ -1092,6 +1106,7 @@ class Store {
       queue: this.queue,
       metrics: this.metrics,
       audit: this.audit,
+      sessionEpoch: this.sessionEpoch,
       config: this.config,
       inbox: this.inbox,
     };
@@ -1118,6 +1133,7 @@ class Store {
     if (Array.isArray(d.queue)) this.queue = d.queue;
     if (Array.isArray(d.metrics)) this.metrics = d.metrics;
     if (Array.isArray(d.audit)) this.audit = d.audit;
+    if (d.sessionEpoch && typeof d.sessionEpoch === "object") this.sessionEpoch = d.sessionEpoch;
     if (d.config && typeof d.config === "object") Object.assign(this.config, d.config);
     if (d.inbox && typeof d.inbox === "object") this.inbox = d.inbox;
     // تأكد إن كل موظف له حالة live

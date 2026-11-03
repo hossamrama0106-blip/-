@@ -2,11 +2,12 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { Role, type LoginResult } from "@khiam/shared";
+import { ActivityType, Channel, NotificationType, QueuePriority, Role, ViolationSeverity, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
 import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
+import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
 
 export const app = new Hono();
 
@@ -18,8 +19,22 @@ app.use(
   }),
 );
 
-app.onError((err, c) => c.json({ error: String((err as any)?.message || err) }, 500));
+app.onError((err, c) => {
+  if (err instanceof ValidationError) return c.json({ error: err.message }, 400);
+  return c.json({ error: String((err as any)?.message || err) }, 500);
+});
 app.notFound((c) => c.json({ error: "not_found" }, 404));
+
+// قراءة جسم الطلب والتحقق منه مقابل شكل محدّد (يرمي ValidationError → 400 عبر onError).
+async function body<T = Record<string, unknown>>(c: any, shape: Record<string, Rule>): Promise<T> {
+  let raw: unknown;
+  try {
+    raw = await c.req.json();
+  } catch {
+    throw new ValidationError("صيغة الطلب غير صالحة (JSON)");
+  }
+  return parse<T>(raw, shape);
+}
 
 // بوّابة المصادقة والصلاحيات لكل /api (ما عدا health و login)
 const OPEN = new Set(["/api/health", "/api/auth/login"]);
@@ -49,6 +64,7 @@ app.use("/api/*", async (c, next) => {
   if (OPEN.has(path)) return next();
   const id = verifyToken(bearer(c));
   if (!id) return c.json({ error: "unauthorized" }, 401);
+  if (!store.isTokenActive(id.id, id.iat)) return c.json({ error: "انتهت الجلسة — سجّل الدخول ثانية" }, 401);
   const m = c.req.method;
 
   const adminOnly =
@@ -128,7 +144,10 @@ app.post("/api/auth/login", async (c) => {
   const guard = loginGuard(ip);
   if (!guard.ok) return c.json({ error: "محاولات دخول كتير — استنى شوية وجرّب تاني", retryAfter: guard.retryAfter }, 429);
 
-  const { code, whatsapp } = await c.req.json<{ code: string; whatsapp?: string }>();
+  const { code, whatsapp } = await body<{ code: string; whatsapp?: string }>(c, {
+    code: str({ max: 64 }),
+    whatsapp: str({ optional: true, max: 32 }),
+  });
 
   if (isAdminCode(code)) {
     loginOk(ip);
@@ -164,6 +183,13 @@ app.post("/api/auth/consent", async (c) => {
   return c.json(emp);
 });
 
+// تسجيل خروج ذاتي — يُبطل كل جلسات صاحب التوكن (logout من كل الأجهزة)
+app.post("/api/auth/logout", (c) => {
+  const a = actor(c);
+  store.revokeSessions(a.id);
+  return c.json({ ok: true });
+});
+
 // ---------- employees ----------
 app.get("/api/employees", (c) =>
   c.json({
@@ -173,9 +199,13 @@ app.get("/api/employees", (c) =>
 );
 
 app.post("/api/employees", async (c) => {
-  const body = await c.req.json<{ code: string; name: string; whatsapp: string; role?: string }>();
-  if (!body.code || !body.name) return c.json({ error: "code and name required" }, 400);
-  const emp = store.addEmployee(body);
+  const data = await body<{ code: string; name: string; whatsapp?: string; role?: string }>(c, {
+    code: str({ min: 1, max: 32 }),
+    name: str({ min: 1, max: 80 }),
+    whatsapp: str({ optional: true, max: 32 }),
+    role: oneOf(Object.values(Role), { optional: true }),
+  });
+  const emp = store.addEmployee({ code: data.code, name: data.name, whatsapp: data.whatsapp ?? "", role: data.role });
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "employee_create", targetId: emp.id, targetName: emp.name, details: `إضافة موظف ${emp.name} (${emp.code})`, ip: clientIp(c) });
   return c.json(emp, 201);
@@ -216,6 +246,15 @@ app.post("/api/employees/:id/flags", async (c) => {
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "flags_set", targetId: id, details: `تفعيل رقابة علنية: ${parts.join("، ") || "—"}`, ip: clientIp(c) });
   return c.json(live);
+});
+
+// تسجيل خروج إجباري لموظف من الإدارة — قطع جلسته فورًا (مثلاً عند إنهاء وصوله)
+app.post("/api/employees/:id/logout", (c) => {
+  const id = c.req.param("id");
+  store.revokeSessions(id);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "session_revoke", targetId: id, details: "تسجيل خروج إجباري (قطع الجلسة)", ip: clientIp(c) });
+  return c.json({ ok: true });
 });
 
 // ---------- presence / heartbeat ----------
@@ -265,8 +304,13 @@ app.post("/api/break/end", async (c) => {
 
 // ---------- activity / counters ----------
 app.post("/api/activity", async (c) => {
-  const body = await c.req.json<{ employeeId: string; type: string; channel: string; ref?: string }>();
-  return c.json(store.addActivity(body), 201);
+  const data = await body<{ employeeId: string; type: string; channel: string; ref?: string }>(c, {
+    employeeId: str({ max: 64 }),
+    type: oneOf(Object.values(ActivityType)),
+    channel: oneOf(Object.values(Channel)),
+    ref: str({ optional: true, max: 200 }),
+  });
+  return c.json(store.addActivity(data), 201);
 });
 app.get("/api/counters", (c) => {
   const date = c.req.query("date") ?? undefined;
@@ -288,29 +332,39 @@ app.post("/api/reviews", async (c) => {
 });
 app.get("/api/points", (c) => c.json(store.points));
 app.post("/api/points", async (c) => {
-  const body = await c.req.json<{ employeeId: string; delta: number; reason: string }>();
-  const p = store.addPoint({ ...body, source: "manual" });
+  const data = await body<{ employeeId: string; delta: number; reason?: string }>(c, {
+    employeeId: str({ max: 64 }),
+    delta: num({ int: true, min: -100, max: 100 }),
+    reason: str({ optional: true, max: 300 }),
+  });
+  const reason = data.reason ?? "تقييم إداري";
+  const p = store.addPoint({ employeeId: data.employeeId, delta: data.delta, reason, source: "manual" });
   const a = actor(c);
-  store.recordAudit({ actorId: a.id, actorName: a.name, action: "point_add", targetId: body.employeeId, details: `نقاط ${body.delta > 0 ? "+" : ""}${body.delta}: ${body.reason}`, ip: clientIp(c) });
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "point_add", targetId: data.employeeId, details: `نقاط ${data.delta > 0 ? "+" : ""}${data.delta}: ${reason}`, ip: clientIp(c) });
   return c.json(p, 201);
 });
 
 // ---------- AI (تقييم الردود + الرادار الليلي) ----------
 app.get("/api/ai/status", (c) => c.json({ mode: aiMode(), nightMode: store.nightMode }));
 app.post("/api/ai/evaluate", async (c) => {
-  const body = await c.req.json<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[] }>();
-  const result = await evaluateReply({ messages: body.messages, conversationRef: body.conversationRef });
+  const data = await body<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[]; evidenceUrl?: string }>(c, {
+    employeeId: str({ max: 64 }),
+    conversationRef: str({ optional: true, max: 200 }),
+    messages: arr({ max: 100 }),
+    evidenceUrl: str({ optional: true, max: 500 }),
+  });
+  const result = await evaluateReply({ messages: data.messages, conversationRef: data.conversationRef });
   const review = store.addReview({
-    employeeId: body.employeeId,
-    conversationRef: body.conversationRef || "—",
+    employeeId: data.employeeId,
+    conversationRef: data.conversationRef || "—",
     verdict: result.verdict,
     score: result.score,
     aiNotes: result.notes,
-    sampleText: (body.messages || []).map((m) => `${m.role}: ${m.text}`).join("\n").slice(0, 400),
-    evidenceUrl: (body as any).evidenceUrl ?? null,
+    sampleText: (data.messages || []).map((m) => `${m.role}: ${m.text}`).join("\n").slice(0, 400),
+    evidenceUrl: data.evidenceUrl ?? null,
   });
   if (result.dealAtRisk) {
-    store.raiseAlert({ employeeId: body.employeeId, kind: "deal_at_risk", severity: "high", message: "أوردر محتمل يضيع — تدخّل الآن" });
+    store.raiseAlert({ employeeId: data.employeeId, kind: "deal_at_risk", severity: "high", message: "أوردر محتمل يضيع — تدخّل الآن" });
   }
   return c.json({ review, result }, 201);
 });
@@ -325,9 +379,15 @@ app.post("/api/ai/night-mode", async (c) => {
 // ---------- violations ----------
 app.get("/api/violations", (c) => c.json(store.violations));
 app.post("/api/violations", async (c) => {
-  const body = await c.req.json<any>();
-  if (body.imageUrl && String(body.imageUrl).length > 900000) return c.json({ error: "image too large" }, 400);
-  const v = store.addViolation(body);
+  const data = await body<{ employeeId: string; type: string; severity?: string; reason?: string; link?: string; imageUrl?: string }>(c, {
+    employeeId: str({ max: 64 }),
+    type: str({ min: 1, max: 120 }),
+    severity: oneOf(Object.values(ViolationSeverity), { optional: true }),
+    reason: str({ optional: true, max: 500 }),
+    link: str({ optional: true, max: 500 }),
+    imageUrl: str({ optional: true, max: 900000, trim: false }),
+  });
+  const v = store.addViolation(data);
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "violation_add", targetId: v.employeeId, details: `مخالفة يدوية: ${v.type} (${v.severity})`, ip: clientIp(c) });
   return c.json(v, 201);
@@ -345,11 +405,16 @@ app.get("/api/notifications", (c) => {
   return c.json(list);
 });
 app.post("/api/notifications", async (c) => {
-  const body = await c.req.json<{ type: string; from: string; to: string; body: string }>();
-  const n = store.addNotification(body);
+  const data = await body<{ type: string; from: string; to: string; body: string }>(c, {
+    type: oneOf(Object.values(NotificationType)),
+    from: str({ max: 64 }),
+    to: str({ max: 64 }),
+    body: str({ max: 1000, allowEmpty: true }),
+  });
+  const n = store.addNotification(data);
   const a = actor(c);
-  const toName = body.to === "all" ? "الكل" : store.findEmployee(body.to)?.name ?? body.to;
-  store.recordAudit({ actorId: a.id, actorName: a.name, action: "notification_send", targetId: body.to !== "all" ? body.to : null, details: `إشعار (${body.type}) إلى ${toName}`, ip: clientIp(c) });
+  const toName = data.to === "all" ? "الكل" : store.findEmployee(data.to)?.name ?? data.to;
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "notification_send", targetId: data.to !== "all" ? data.to : null, details: `إشعار (${data.type}) إلى ${toName}`, ip: clientIp(c) });
   return c.json(n, 201);
 });
 app.post("/api/notifications/:id/reply", async (c) => {
@@ -365,14 +430,21 @@ app.get("/api/chat", (c) => {
   return c.json(store.chatFor(me, withId));
 });
 app.post("/api/chat", async (c) => {
-  const body = await c.req.json<{ from: string; to: string; body: string }>();
-  return c.json(store.addChat(body), 201);
+  const data = await body<{ from: string; to: string; body: string }>(c, {
+    from: str({ max: 64 }),
+    to: str({ max: 64 }),
+    body: str({ min: 1, max: 1000 }),
+  });
+  return c.json(store.addChat(data), 201);
 });
 
 // ---------- inbox ----------
 app.get("/api/inbox", (c) => c.json(store.inbox));
 app.post("/api/inbox", async (c) => {
-  const { unreadMessages, unreadComments } = await c.req.json<{ unreadMessages: number; unreadComments: number }>();
+  const { unreadMessages, unreadComments } = await body<{ unreadMessages: number; unreadComments: number }>(c, {
+    unreadMessages: num({ int: true, min: 0, max: 1000000 }),
+    unreadComments: num({ int: true, min: 0, max: 1000000 }),
+  });
   return c.json(store.setInbox(unreadMessages, unreadComments));
 });
 
@@ -382,9 +454,14 @@ app.get("/api/metrics", (c) => c.json(store.kpiSnapshot()));
 // ---------- طابور ميتا الإجباري ----------
 app.get("/api/queue", (c) => c.json(store.queueStats()));
 app.post("/api/queue/enqueue", async (c) => {
-  const body = await c.req.json<{ channel?: string; customerRef: string; preview?: string; link?: string; priority?: string }>();
-  if (!body.customerRef) return c.json({ error: "customerRef required" }, 400);
-  return c.json(store.enqueueTask(body), 201);
+  const data = await body<{ channel?: string; customerRef: string; preview?: string; link?: string; priority?: string }>(c, {
+    customerRef: str({ min: 1, max: 120 }),
+    channel: oneOf(Object.values(Channel), { optional: true }),
+    preview: str({ optional: true, max: 500 }),
+    link: str({ optional: true, max: 500 }),
+    priority: oneOf(Object.values(QueuePriority), { optional: true }),
+  });
+  return c.json(store.enqueueTask(data), 201);
 });
 // مزامنة محادثات ميتا الحقيقية المسحوبة من الإكستنشن (dedup عبر externalId)
 app.post("/api/queue/sync", async (c) => {
@@ -445,8 +522,11 @@ app.get("/api/screenshots/latest", (c) => {
 app.get("/api/timeline", (c) => c.json(store.timelineFor(c.req.query("employeeId") ?? "", Number(c.req.query("limit") ?? 60))));
 app.get("/api/history", (c) => c.json(store.historyFor(c.req.query("employeeId") ?? "", Number(c.req.query("limit") ?? 100))));
 app.post("/api/history", async (c) => {
-  const body = await c.req.json<{ employeeId: string; items: { url: string; title?: string; visitAt?: string }[] }>();
-  return c.json({ added: store.addHistory(body.employeeId, body.items || []) }, 201);
+  const data = await body<{ employeeId: string; items: { url: string; title?: string; visitAt?: string }[] }>(c, {
+    employeeId: str({ max: 64 }),
+    items: arr({ max: 500, optional: true }),
+  });
+  return c.json({ added: store.addHistory(data.employeeId, data.items || []) }, 201);
 });
 app.post("/api/employees/:id/command", async (c) => {
   const { cmd } = await c.req.json<{ cmd: string }>();

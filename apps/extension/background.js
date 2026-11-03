@@ -68,6 +68,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true });
         }
         case "logout":
+          try { await api("/api/auth/logout", "POST", {}); } catch (_) {} // أبطل الجلسة على السيرفر (logout فعّال)
           await chrome.storage.local.remove("session");
           return sendResponse({ ok: true });
         case "presence": {

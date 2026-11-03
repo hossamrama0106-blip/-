@@ -113,6 +113,7 @@ export const api = {
   updateEmployee: (id: string, patch: Partial<Employee>) =>
     http<Employee>(`/employees/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
   removeEmployee: (id: string) => http(`/employees/${id}`, { method: "DELETE" }),
+  forceLogout: (id: string) => http(`/employees/${id}/logout`, { method: "POST" }),
   setFlags: (id: string, flags: { liveWatching?: boolean; spotlight?: boolean; superMonitor?: boolean }) =>
     http<LiveStatus>(`/employees/${id}/flags`, { method: "POST", body: JSON.stringify(flags) }),
 

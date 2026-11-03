@@ -18,6 +18,7 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   queue_assign: { label: "إسناد طابور", cls: "bg-sky-600/25 text-sky-300" },
   queue_skip: { label: "تخطّي طابور", cls: "bg-slate-600/30 text-slate-300" },
   notification_send: { label: "إشعار", cls: "bg-sky-600/25 text-sky-300" },
+  session_revoke: { label: "خروج إجباري", cls: "bg-red-600/25 text-red-300" },
 };
 
 function fmtWhen(iso: string): string {

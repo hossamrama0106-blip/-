@@ -175,6 +175,7 @@ export default function DetailPanel() {
               {emp.active ? "تعطيل الحساب" : "تفعيل الحساب"}
             </button>
           </div>
+          <ActBtn full tone="bad" label="🚪 تسجيل خروج إجباري (قطع الجلسة فورًا)" onClick={() => act("logout", () => api.forceLogout(emp.id))} />
         </Section>
 
         {/* رقابة متقدمة: لايف + هيستوري */}
