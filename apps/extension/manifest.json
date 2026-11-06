@@ -6,6 +6,8 @@
   "permissions": ["storage", "history"],
   "host_permissions": [
     "http://localhost:8787/*",
+    "https://*.supabase.co/*",
+    "wss://*.supabase.co/*",
     "https://business.facebook.com/*",
     "https://web.whatsapp.com/*",
     "https://www.instagram.com/*",

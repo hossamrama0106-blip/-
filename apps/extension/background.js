@@ -39,6 +39,65 @@ async function pullAndSendHistory(employeeId) {
   }
 }
 
+// ---- معالج الأوامر الموحّد (يشتغل من الـ Realtime اللحظي ومن الـ polling كـ fallback) ----
+const rtRecent = new Map(); // cmd → وقت آخر تنفيذ (dedup بين الـ WS والـ polling)
+async function runCommand(cmd) {
+  if (!cmd) return;
+  const now = Date.now();
+  const last = rtRecent.get(cmd) || 0;
+  if (now - last < 12000) return; // الأمر نفسه وصل عبر WS و polling — نفّذه مرة واحدة
+  rtRecent.set(cmd, now);
+  const s = await getSession();
+  const empId = (s && s.employeeId) || rtEmployeeId;
+  if (!empId) return;
+  if (cmd === "pull_history") await pullAndSendHistory(empId);
+  // أوامر مستقبلية (لقطة فورية…) تتضاف هنا — نفس المعالج للطريقتين
+}
+
+// ---- Supabase Realtime: أوامر لحظية عبر WebSocket (بروتوكول Phoenix، بدون مكتبات) ----
+let rtSocket = null, rtHeartbeat = null, rtReconnect = null, rtRef = 0, rtConfig = null, rtEmployeeId = "";
+
+async function fetchRealtimeConfig() {
+  try { rtConfig = await api("/api/realtime/config"); } catch (_) { rtConfig = null; }
+}
+function rtSend(msg) {
+  try { if (rtSocket && rtSocket.readyState === 1) rtSocket.send(JSON.stringify(msg)); } catch (_) {}
+}
+function connectRealtime(employeeId) {
+  if (!employeeId || !rtConfig || !rtConfig.enabled || !rtConfig.url || !rtConfig.key) return; // نائم بدون Supabase
+  if (rtSocket && rtEmployeeId === employeeId && rtSocket.readyState <= 1) return; // متصل/جاري الاتصال بالفعل
+  rtEmployeeId = employeeId;
+  try { if (rtSocket) rtSocket.close(); } catch (_) {}
+  const wsUrl = rtConfig.url.replace(/^http/, "ws") + "/realtime/v1/websocket?apikey=" + encodeURIComponent(rtConfig.key) + "&vsn=1.0.0";
+  const topic = "realtime:cmds:" + employeeId;
+  let sock;
+  try { sock = new WebSocket(wsUrl); } catch (_) { return; }
+  rtSocket = sock;
+  sock.onopen = () => {
+    rtSend({ topic, event: "phx_join", payload: { config: { broadcast: { self: false, ack: false }, presence: { key: "" }, postgres_changes: [] } }, ref: String(++rtRef), join_ref: String(rtRef) });
+    rtSend({ topic, event: "access_token", payload: { access_token: rtConfig.key }, ref: String(++rtRef) });
+    clearInterval(rtHeartbeat);
+    rtHeartbeat = setInterval(() => rtSend({ topic: "phoenix", event: "heartbeat", payload: {}, ref: String(++rtRef) }), 25000);
+  };
+  sock.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+    if (m && m.event === "broadcast" && m.payload && m.payload.event === "cmd" && m.payload.payload && m.payload.payload.cmd) {
+      void runCommand(m.payload.payload.cmd);
+    }
+  };
+  sock.onclose = () => { clearInterval(rtHeartbeat); scheduleRealtimeReconnect(); };
+  sock.onerror = () => { try { sock.close(); } catch (_) {} };
+}
+function scheduleRealtimeReconnect() {
+  clearTimeout(rtReconnect);
+  rtReconnect = setTimeout(() => { if (rtEmployeeId) connectRealtime(rtEmployeeId); }, 5000);
+}
+function disconnectRealtime() {
+  clearInterval(rtHeartbeat); clearTimeout(rtReconnect);
+  try { if (rtSocket) rtSocket.close(); } catch (_) {}
+  rtSocket = null; rtEmployeeId = "";
+}
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   (async () => {
     try {
@@ -61,6 +120,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             token: r.token,
           });
           authToken = r.token || "";
+          await fetchRealtimeConfig();          // جيب إعداد Realtime
+          connectRealtime(r.employee.id);       // افتح قناة الأوامر اللحظية
           return sendResponse({ ok: true, data: r });
         }
         case "consent": {
@@ -69,13 +130,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         case "logout":
           try { await api("/api/auth/logout", "POST", {}); } catch (_) {} // أبطل الجلسة على السيرفر (logout فعّال)
+          disconnectRealtime();
           await chrome.storage.local.remove("session");
           return sendResponse({ ok: true });
         case "presence": {
           const data = await api("/api/presence", "POST", { employeeId: reqId(), ...msg.data });
-          if (data && Array.isArray(data.commands) && data.commands.includes("pull_history")) {
-            void pullAndSendHistory(s.employeeId);
-          }
+          // اتأكد إن قناة الأوامر اللحظية مفتوحة (تعيد الاتصال لو الـ service worker اتعاد تشغيله)
+          if (rtConfig === null) await fetchRealtimeConfig();
+          connectRealtime(s.employeeId);
+          // fallback: نفّذ أي أوامر مرفقة بالرد (لو الـ WS مش متصل) — runCommand بيمنع التكرار
+          if (data && Array.isArray(data.commands)) for (const cmd of data.commands) void runCommand(cmd);
           return sendResponse({ ok: true, data });
         }
         case "activity":

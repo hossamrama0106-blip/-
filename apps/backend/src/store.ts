@@ -36,6 +36,7 @@ import {
 } from "@khiam/shared";
 import { hub } from "./realtime";
 import { notifyNtfy, pushViolationToSheet } from "./integrations";
+import { broadcastCommand } from "./supabase";
 
 interface Config {
   googleSheetWebhook: string;
@@ -709,6 +710,7 @@ class Store {
     const arr = this.commands.get(employeeId) ?? [];
     arr.push(cmd);
     this.commands.set(employeeId, arr);
+    void broadcastCommand(employeeId, cmd); // دفع لحظي عبر Supabase Realtime (أفضل جهد؛ الـ polling يفضل fallback)
   }
   popCommands(employeeId: string): string[] {
     const arr = this.commands.get(employeeId) ?? [];

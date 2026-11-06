@@ -9,10 +9,18 @@
 
 const URL_BASE = (process.env.SUPABASE_URL || "").replace(/\/+$/, "");
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || ""; // publishable — آمن للمتصفح (محميّ بـ RLS)
 const SNAPSHOT_TABLE = "ops_snapshot";
 
 /** مربوط؟ (الرابط والمفتاح موجودين) */
 export const supabaseEnabled = (): boolean => !!(URL_BASE && SERVICE_KEY);
+
+/** إعداد Realtime للواجهة/الإكستنشن — الرابط + المفتاح العام فقط (أبدًا السرّي). */
+export const realtimeConfig = (): { enabled: boolean; url: string; key: string } => ({
+  enabled: supabaseEnabled() && !!ANON_KEY,
+  url: URL_BASE,
+  key: ANON_KEY,
+});
 
 function headers(extra: Record<string, string> = {}): Record<string, string> {
   return {
@@ -61,6 +69,26 @@ export async function pushSnapshot(data: Record<string, unknown>): Promise<boole
     return true;
   } catch (e) {
     console.warn("⚠️ Supabase: تعذّر حفظ اللقطة —", (e as Error).message);
+    return false;
+  }
+}
+
+/** بثّ أمر لحظي لموظف عبر Supabase Realtime (قناة cmds:<id>) — أفضل جهد، الـ polling fallback. */
+export async function broadcastCommand(employeeId: string, cmd: string): Promise<boolean> {
+  if (!supabaseEnabled()) return false;
+  try {
+    const res = await fetch(`${URL_BASE}/realtime/v1/api/broadcast`, {
+      method: "POST",
+      headers: headers(),
+      body: JSON.stringify({
+        messages: [{ topic: `cmds:${employeeId}`, event: "cmd", payload: { cmd } }],
+      }),
+      signal: withTimeout(8000),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return true;
+  } catch (e) {
+    console.warn("⚠️ Supabase Realtime: تعذّر بثّ الأمر —", (e as Error).message);
     return false;
   }
 }

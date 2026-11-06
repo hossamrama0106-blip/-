@@ -8,7 +8,7 @@ import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
 import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
 import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
-import { supabaseEnabled } from "./supabase";
+import { supabaseEnabled, realtimeConfig } from "./supabase";
 import { r2Enabled, putDataUrl, signedGetUrl } from "./r2";
 
 export const app = new Hono();
@@ -126,6 +126,9 @@ app.get("/api/health", (c) =>
     time: new Date().toISOString(),
   }),
 );
+
+// إعداد Realtime للإكستنشن — الرابط + المفتاح العام فقط (للاشتراك في أوامر لحظية). يتطلّب توكن.
+app.get("/api/realtime/config", (c) => c.json(realtimeConfig()));
 
 // ---------- test page (لمعاينة شريط الإكستنشن بدون ميتا) ----------
 app.get("/", (c) => c.html(`<!doctype html><meta charset=utf-8><body style="font-family:sans-serif;background:#0f141c;color:#e5e7eb;padding:40px"><h2>Khiam backend شغّال ✅</h2><p>الداشبورد: <a style=color:#818cf8 href="http://localhost:5173">localhost:5173</a> · صفحة تجربة الإكستنشن: <a style=color:#818cf8 href="/test">/test</a></p>`));
