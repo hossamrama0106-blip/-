@@ -1,4 +1,5 @@
 // نقطة تشغيل الـ backend المحلي على Node.
+import "./env"; // لازم أول import — يحمّل .env قبل أي موديول يقرأ process.env
 import { serve } from "@hono/node-server";
 import { app } from "./app";
 import { store } from "./store";
