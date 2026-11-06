@@ -554,16 +554,25 @@
     const m = (document.title || "").match(/\((\d+)\)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  // صفوف المحادثات: نعتمد إشارات شبه ثابتة (role/aria/href) بدل الكلاسات المبهمة المتغيّرة
+  // صفوف المحادثات: نعتمد إشارات شبه ثابتة (role/aria/href) بدل الكلاسات المبهمة المتغيّرة.
+  // الأدق: نلاقي روابط المحادثات ونصعد لأقرب "صف" حاوٍ (يمنع العدّ المزدوج ويلمّ الصف كامل).
   function metaConversationRows() {
-    const sels = [
-      'a[href*="selected_item_id"]',
-      'a[href*="/inbox/"][role]',
-      '[role="row"]',
-      '[role="gridcell"] a[href*="inbox"]',
-    ];
+    const links = Array.from(
+      document.querySelectorAll('a[href*="selected_item_id"], a[href*="thread_id"], a[href*="/inbox/"][role]'),
+    );
+    const seen = new Set();
+    const rowsFromLinks = [];
+    for (const a of links) {
+      const row = (a.closest && a.closest('[role="row"], [role="listitem"], li, [role="gridcell"]')) || a;
+      if (!seen.has(row)) {
+        seen.add(row);
+        rowsFromLinks.push(row);
+      }
+    }
+    if (rowsFromLinks.length) return rowsFromLinks;
+    // fallback: لو مفيش روابط معروفة، جرّب عناصر دور القائمة وخُد الأكبر
     let rows = [];
-    for (const s of sels) {
+    for (const s of ['[role="row"]', '[role="listitem"]', '[role="grid"] [role="row"]', '[role="gridcell"] a[href*="inbox"]']) {
       try {
         const found = Array.from(document.querySelectorAll(s));
         if (found.length > rows.length) rows = found;
@@ -572,10 +581,12 @@
     return rows;
   }
   function looksUnread(el) {
-    const al = (el.getAttribute && (el.getAttribute("aria-label") || "")) || "";
+    if (!el || !el.getAttribute) return false;
+    const al = (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("aria-description") || "");
     if (/unread|غير مقروء|new message|رسالة جديدة/i.test(al)) return true;
-    const strong = el.querySelector && el.querySelector('span[style*="600"], span[style*="700"], b, strong');
-    return !!strong;
+    // ميتا بتعلّم غير المقروء بخط ثقيل (600/700/bold)
+    if (el.querySelector && el.querySelector('span[style*="600"], span[style*="700"], span[style*="bold"], b, strong')) return true;
+    return false;
   }
   function extIdFrom(el) {
     const a = el.matches && el.matches("a[href]") ? el : el.querySelector && el.querySelector('a[href*="inbox"], a[href*="selected_item_id"]');
