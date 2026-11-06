@@ -10,6 +10,7 @@ import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk }
 import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
 import { supabaseEnabled, realtimeConfig } from "./supabase";
 import { r2Enabled, putDataUrl, signedGetUrl } from "./r2";
+import { wahaEnabled, sendText as wahaSendText, sendImage as wahaSendImage } from "./waha";
 
 export const app = new Hono();
 
@@ -86,6 +87,7 @@ app.use("/api/*", async (c, next) => {
     path === "/api/settings" ||
     path === "/api/metrics" ||
     path === "/api/report/daily" ||
+    (path === "/api/waha/send" && m === "POST") ||
     path === "/api/audit" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
@@ -120,6 +122,7 @@ app.get("/api/health", (c) =>
     mode: supabaseEnabled() ? "supabase+memory" : "local-memory",
     supabase: supabaseEnabled(),
     r2: r2Enabled(),
+    waha: wahaEnabled(),
     clients: hub.count(),
     employees: store.employees.length,
     time: new Date().toISOString(),
@@ -459,6 +462,31 @@ app.get("/api/metrics", (c) => c.json(store.kpiSnapshot()));
 
 // ---------- تقرير الأداء اليومي (أدمِن) ----------
 app.get("/api/report/daily", (c) => c.json(store.dailyReport(c.req.query("date") || undefined)));
+
+// ---------- إرسال واتساب تلقائي عبر WAHA (أدمِن، بفعل صريح — نائم بدون WAHA_URL) ----------
+app.post("/api/waha/send", async (c) => {
+  const { employeeId, text, image } = await body<{ employeeId: string; text: string; image?: string }>(c, {
+    employeeId: str({ min: 1, max: 64 }),
+    text: str({ min: 1, max: 4000 }),
+    image: str({ optional: true, max: 3_000_000 }),
+  });
+  const emp = store.findEmployee(employeeId);
+  if (!emp) return c.json({ error: "موظف غير موجود" }, 404);
+  if (!wahaEnabled()) return c.json({ ok: false, dormant: true, error: "WAHA غير مربوط — استخدم رابط wa.me اليدوي" });
+  if (!emp.whatsapp) return c.json({ ok: false, error: "لا يوجد رقم واتساب للموظف" });
+  const res = image ? await wahaSendImage(emp.whatsapp, image, text) : await wahaSendText(emp.whatsapp, text);
+  const a = actor(c);
+  store.recordAudit({
+    actorId: a.id,
+    actorName: a.name,
+    action: "waha_send",
+    targetId: emp.id,
+    targetName: emp.name,
+    details: `إرسال تقرير واتساب لـ ${emp.name}${res.ok ? "" : " (فشل: " + (res.error || "") + ")"}`,
+    ip: clientIp(c),
+  });
+  return c.json(res);
+});
 
 // ---------- طابور ميتا الإجباري ----------
 app.get("/api/queue", (c) => c.json(store.queueStats()));

@@ -170,6 +170,9 @@ export const api = {
 
   metrics: () => http<KpiSnapshot>("/metrics"),
   reportDaily: (date?: string) => http<DailyReport>(`/report/daily${date ? `?date=${encodeURIComponent(date)}` : ""}`),
+  // إرسال واتساب تلقائي عبر WAHA (نائم بدون WAHA_URL → يرجّع {dormant:true})
+  wahaSend: (data: { employeeId: string; text: string; image?: string }) =>
+    http<{ ok: boolean; dormant?: boolean; error?: string; id?: string }>("/waha/send", { method: "POST", body: JSON.stringify(data) }),
   audit: (limit = 150) => http<AuditEntry[]>(`/audit?limit=${limit}`),
   queue: () => http<QueueStats>("/queue"),
   queueNext: (employeeId: string) =>
