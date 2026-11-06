@@ -290,6 +290,15 @@ create table app_config (
 );
 insert into app_config (id) values (1) on conflict (id) do nothing;
 
+-- ---------- لقطة الحالة الكاملة (durable snapshot) — المرحلة الأولى من ربط Supabase ----------
+-- الـ backend بيخزّن كل الحالة هنا كـ JSON (صف واحد id=1، upsert). تصمد مع إعادة النشر/التشغيل.
+-- المرحلة التالية: قراءة مباشرة من الجداول العلائقية فوق + Supabase Realtime.
+create table if not exists ops_snapshot (
+  id         integer primary key default 1 check (id = 1),
+  data       jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
 -- ============================================================================
 -- RLS: مفعّل على الكل. الـ backend بمفتاح service_role يتخطّاه ويفرض الصلاحيات في الكود.
 -- بدون سياسات عامة = لا وصول مباشر من anon/authenticated (آمن افتراضيًا).
@@ -314,6 +323,7 @@ alter table queue_tasks      enable row level security;
 alter table metrics          enable row level security;
 alter table audit_log        enable row level security;
 alter table app_config       enable row level security;
+alter table ops_snapshot     enable row level security;
 
 -- مثال لسياسات الوصول المباشر من المتصفح لاحقًا (لو اتخلّينا عن طبقة الـ backend كوسيط):
 --   الأدمن يقرأ كل حاجة:

@@ -8,6 +8,7 @@ import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
 import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
 import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
+import { supabaseEnabled } from "./supabase";
 
 export const app = new Hono();
 
@@ -116,7 +117,8 @@ app.get("/api/health", (c) =>
   c.json({
     ok: true,
     service: "khiam-backend",
-    mode: "local-memory",
+    mode: supabaseEnabled() ? "supabase+memory" : "local-memory",
+    supabase: supabaseEnabled(),
     clients: hub.count(),
     employees: store.employees.length,
     time: new Date().toISOString(),
