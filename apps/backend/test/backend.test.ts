@@ -119,3 +119,29 @@ test("queue: الإحصائيات تعدّ المنتظر والمسند", () =>
   assert.equal(s.waiting, 2);
   assert.equal(s.assigned, 0);
 });
+
+// ---------- توزيع الطابور حسب القناة ----------
+test("queue: queueByChannel يعدّ المنتظر لكل قناة", () => {
+  store.queue.length = 0;
+  store.enqueueTask({ customerRef: "WA1", channel: "whatsapp" });
+  store.enqueueTask({ customerRef: "WA2", channel: "whatsapp" });
+  store.enqueueTask({ customerRef: "IG1", channel: "instagram" });
+  const by = store.queueByChannel();
+  assert.equal(by.whatsapp?.waiting, 2);
+  assert.equal(by.instagram?.waiting, 1);
+  assert.equal(by.messenger, undefined); // لا يوجد ماسنجر في الطابور
+});
+
+// ---------- تقرير الأداء اليومي ----------
+test("report: dailyReport يرجّع صفًّا لكل موظف + إجماليات متّسقة", () => {
+  const r = store.dailyReport();
+  // صف لكل موظف
+  assert.equal(r.rows.length, store.employees.length);
+  assert.equal(r.team.employees, r.rows.length);
+  // إجمالي الرسائل = مجموع صفوف الموظفين (اتّساق التجميع)
+  const sumMsgs = r.rows.reduce((a, x) => a + x.msgs, 0);
+  assert.equal(r.team.msgs, sumMsgs);
+  // بنية جودة الردود موجودة
+  assert.ok(typeof r.team.reviews.good === "number");
+  assert.ok(typeof r.byChannel === "object");
+});
