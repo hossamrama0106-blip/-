@@ -672,8 +672,74 @@
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
     if (unreadItems.length) send("queueSync", { items: unreadItems });
   }
+  // ---------- واتساب ويب: قراءة قائمة المحادثات (DOM — أمتن طريقة لواتساب، الـ fiber مبهم) ----------
+  // إشارات واتساب الثابتة: لوحة القائمة #pane-side، كل محادثة div[role="listitem"]،
+  // الاسم span[title]، غير المقروء = شارة عدّاد aria-label فيها unread/غير مقروء.
+  function waChatRows() {
+    const pane = document.querySelector("#pane-side") || document.querySelector('[aria-label="Chat list"]') || document.querySelector('[data-testid="chat-list"]');
+    if (!pane) return [];
+    return Array.from(pane.querySelectorAll('div[role="listitem"]'));
+  }
+  function waUnread(row) {
+    // شارة عدّاد غير المقروء — aria-label صريح (أكثر اللغات: "N unread message(s)" / "غير مقروء")
+    const badge = row.querySelector('span[aria-label*="unread" i], span[aria-label*="غير مقروء"], span[aria-label*="رسائل غير مقروءة"]');
+    if (badge) return true;
+    const al = (row.getAttribute && (row.getAttribute("aria-label") || "")) || "";
+    return /unread|غير مقروء/i.test(al);
+  }
+  function waTitle(row) {
+    const t = row.querySelector("span[title]");
+    const name = (t && (t.getAttribute("title") || t.textContent)) || "";
+    return name.trim() || textOf(row).split("\n")[0];
+  }
+  function waPreview(row) {
+    const spans = row.querySelectorAll("span[title]");
+    if (spans.length > 1) return (spans[spans.length - 1].getAttribute("title") || spans[spans.length - 1].textContent || "").trim();
+    return "";
+  }
+  function scrapeWhatsApp() {
+    try {
+      const rows = waChatRows();
+      if (!rows.length) return { ok: false, unread: null, items: [] };
+      const items = [];
+      const seen = new Set();
+      let unread = 0;
+      for (const r of rows.slice(0, 60)) {
+        const u = waUnread(r);
+        if (u) unread++;
+        const name = (waTitle(r) || "").slice(0, 60);
+        if (!name) continue;
+        const id = "wa_" + name; // واتساب ويب يخفي الرقم؛ الاسم أثبت مرجع متاح (dedup لكل عميل)
+        if (seen.has(id)) continue;
+        seen.add(id);
+        items.push({ externalId: id, customerRef: name, preview: (waPreview(r) || "").slice(0, 160), channel: "whatsapp", link: null, priority: "normal", unread: u });
+      }
+      return { ok: true, unread, items };
+    } catch (e) {
+      return { ok: false, unread: null, items: [], error: String(e) };
+    }
+  }
+
+  // مزامنة قناة غير-ميتا (واتساب) → نفس مسار الإنبوكس/الطابور، دفاعيًا (يتخطّى لو البنية مش مفهومة)
+  function scrapeForSite() {
+    if (SITE === "whatsapp") return scrapeWhatsApp();
+    return { ok: false, unread: null, items: [] };
+  }
+  async function scrapeAndSyncOther() {
+    if (!state.session || (SITE !== "whatsapp")) return;
+    const d = scrapeForSite();
+    if (!d.ok) return; // لم نتعرّف على البنية — تخطٍّ آمن (لا نلوّث الطابور)
+    const unreadItems = d.items.filter((it) => it.unread);
+    send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: 0 });
+    if (unreadItems.length) send("queueSync", { items: unreadItems });
+  }
+
   // تشخيص: نادِ __khiamProbe() في console سياق الإضافة لمراجعة القراءة (أطوال فقط — بدون أسماء/نصوص)
   window.__khiamProbe = function () {
+    if (SITE === "whatsapp") {
+      const rows = waChatRows();
+      return { site: "whatsapp", rowCount: rows.length, unreadCount: rows.filter(waUnread).length, sample: rows.slice(0, 5).map((r) => ({ nameLen: (waTitle(r) || "").length, previewLen: (waPreview(r) || "").length, unread: waUnread(r) })) };
+    }
     const rows = metaThreadRows();
     return {
       url: location.pathname,
@@ -737,11 +803,15 @@
   setInterval(loadSession, 20000); // يلتقط تسجيل الدخول من البوب-أب
   setInterval(ensureMounted, 3000); // يصمد لو الموقع شال الشريط
 
-  // سحب بيانات ميتا الحقيقية (أفضل جهد) على صفحات ميتا فقط
+  // سحب بيانات الإنبوكس الحقيقية حسب القناة
   if (SITE === "meta") {
     setupFiberBridge(); // الأساسي: حقن inject.js (قراءة fiber) + استقبال
     setTimeout(scrapeAndSync, 4000); // fallback DOM (يتخطّى لو fiber شغّال)
     setInterval(scrapeAndSync, 20000);
+  } else if (SITE === "whatsapp") {
+    // واتساب ويب: قراءة DOM دفاعية (يتخطّى بأمان لو البنية مش مفهومة)
+    setTimeout(scrapeAndSyncOther, 5000);
+    setInterval(scrapeAndSyncOther, 20000);
   }
 
   // إعادة الحقن لو الـ DOM اتغيّر بالكامل
