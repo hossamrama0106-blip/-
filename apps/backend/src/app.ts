@@ -9,6 +9,7 @@ import { aiMode, evaluateReply } from "./ai";
 import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
 import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
 import { supabaseEnabled } from "./supabase";
+import { r2Enabled, putDataUrl, signedGetUrl } from "./r2";
 
 export const app = new Hono();
 
@@ -119,6 +120,7 @@ app.get("/api/health", (c) =>
     service: "khiam-backend",
     mode: supabaseEnabled() ? "supabase+memory" : "local-memory",
     supabase: supabaseEnabled(),
+    r2: r2Enabled(),
     clients: hub.count(),
     employees: store.employees.length,
     time: new Date().toISOString(),
@@ -505,19 +507,33 @@ app.post("/api/alerts/:id/resolve", (c) => {
 });
 
 // ---------- screenshots ----------
+// عرض اللقطة للواجهة: لو مرفوعة في R2 نرجّع رابطًا موقّعًا في dataUrl (الـ <img> يشتغل زي ما هو)،
+// وإلا الـ base64 المحفوظ في الذاكرة. الواجهة ماتفرقش بين الاتنين.
+function shotView<T extends { storagePath?: string | null; dataUrl?: string } | null>(s: T): T {
+  if (s && s.storagePath) return { ...s, dataUrl: signedGetUrl(s.storagePath) };
+  return s;
+}
+
 app.post("/api/screenshots", async (c) => {
   const body = await c.req.json<{ employeeId: string; dataUrl: string; width?: number; height?: number; isViolation?: boolean; ocrText?: string | null }>();
   if (!body.dataUrl || body.dataUrl.length > 700000) return c.json({ error: "invalid or too large" }, 400);
-  return c.json(store.addScreenshot(body), 201);
+  const shot = store.addScreenshot(body);
+  // ارفع لـ R2 لو مربوط (أفضل جهد): ينجح → نخزّن المفتاح ونفضّي البايتات؛ يفشل → تفضل في الذاكرة
+  if (r2Enabled()) {
+    const ext = shot.dataUrl.startsWith("data:image/png") ? "png" : shot.dataUrl.startsWith("data:image/jpeg") ? "jpg" : "webp";
+    const stored = await putDataUrl(`screenshots/${shot.employeeId}/${shot.id}.${ext}`, shot.dataUrl);
+    if (stored) store.setScreenshotStorage(shot.id, stored);
+  }
+  return c.json(shotView(shot), 201);
 });
 app.get("/api/screenshots", (c) => {
   const id = c.req.query("employeeId");
-  if (!id) return c.json(store.screenshots.slice(-30).reverse());
-  return c.json(store.screenshotsFor(id));
+  const list = id ? store.screenshotsFor(id) : store.screenshots.slice(-30).reverse();
+  return c.json(list.map(shotView));
 });
 app.get("/api/screenshots/latest", (c) => {
   const id = c.req.query("employeeId") ?? "";
-  return c.json(store.latestScreenshot(id));
+  return c.json(shotView(store.latestScreenshot(id)));
 });
 
 // ---------- timeline / history / commands / settings ----------
@@ -539,7 +555,7 @@ app.post("/api/employees/:id/command", async (c) => {
 });
 app.get("/api/screenshots/:id", (c) => {
   const s = store.screenshots.find((x) => x.id === c.req.param("id"));
-  return s ? c.json(s) : c.json({ error: "not_found" }, 404);
+  return s ? c.json(shotView(s)) : c.json({ error: "not_found" }, 404);
 });
 app.get("/api/settings", (c) => c.json(store.getConfig()));
 app.post("/api/settings", async (c) => {

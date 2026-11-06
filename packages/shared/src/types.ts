@@ -181,7 +181,8 @@ export interface InboxSnapshot {
 export interface Screenshot {
   id: ID;
   employeeId: ID;
-  dataUrl: string;
+  dataUrl: string; // base64 في الذاكرة لو R2 مطفي؛ يتفضّى لـ "" بعد الرفع لـ R2
+  storagePath: string | null; // مفتاح الكائن في R2 (لو مرفوع)؛ الرابط الموقّع يُولَّد عند العرض
   width: number;
   height: number;
   isViolation: boolean;

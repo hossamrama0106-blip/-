@@ -574,6 +574,7 @@ class Store {
       id: uid("shot"),
       employeeId: input.employeeId,
       dataUrl: input.dataUrl,
+      storagePath: null,
       width: input.width ?? 0,
       height: input.height ?? 0,
       isViolation: !!input.isViolation,
@@ -584,6 +585,14 @@ class Store {
     // تنظيف ذاتي: احتفظ بآخر 60 لقطة فقط في الذاكرة
     if (this.screenshots.length > 60) this.screenshots.splice(0, this.screenshots.length - 60);
     return sc;
+  }
+  /** بعد رفع اللقطة لـ R2: خزّن مفتاح الكائن وفضّي الـ base64 الثقيل من الذاكرة. */
+  setScreenshotStorage(id: string, storagePath: string): Screenshot | null {
+    const s = this.screenshots.find((x) => x.id === id);
+    if (!s) return null;
+    s.storagePath = storagePath;
+    s.dataUrl = ""; // الصورة بقت في R2 — مفيش داعي نحتفظ بالبايتات في الرام
+    return s;
   }
   latestScreenshot(employeeId: string): Screenshot | null {
     for (let i = this.screenshots.length - 1; i >= 0; i--) {
