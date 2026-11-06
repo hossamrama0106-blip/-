@@ -80,7 +80,6 @@ app.use("/api/*", async (c, next) => {
     (path === "/api/violations" && m === "POST") ||
     (path === "/api/points" && m === "POST") ||
     (path === "/api/notifications" && m === "POST") ||
-    (path === "/api/inbox" && m === "POST") ||
     (path === "/api/ai/night-mode" && m === "POST") ||
     path === "/api/timeline" ||
     (path === "/api/history" && m === "GET") ||
@@ -89,7 +88,6 @@ app.use("/api/*", async (c, next) => {
     path === "/api/audit" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
-    (path === "/api/queue/sync" && m === "POST") ||
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
   if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
