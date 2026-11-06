@@ -637,11 +637,36 @@
       return { ok: false, unread: null, items: [], error: String(e) };
     }
   }
+  // ---------- المصدر الأساسي: جسر React fiber (inject.js في main world) ----------
+  // بيانات المحادثات (المعرّف/غير-المقروء/الاسم/المعاينة/القناة) من props.thread — موثوقة وثابتة.
+  let lastFiberAt = 0;
+  function handleFiberInbox(data) {
+    if (!state.session) return;
+    lastFiberAt = Date.now();
+    const items = Array.isArray(data.items) ? data.items : [];
+    const unreadItems = items.filter((it) => it.unread); // للطابور: غير المقروء فقط (الجديد/غير المجاب عليه)
+    const comments = isComments() ? unreadItems.length : 0;
+    send("inboxSync", { unreadMessages: Math.max(0, data.unread || 0), unreadComments: comments });
+    if (unreadItems.length) send("queueSync", { items: unreadItems });
+  }
+  function setupFiberBridge() {
+    try {
+      const s = document.createElement("script");
+      s.src = chrome.runtime.getURL("inject.js");
+      s.onload = () => s.remove();
+      (document.head || document.documentElement).appendChild(s);
+    } catch (_) {}
+    window.addEventListener("message", (e) => {
+      if (e.source !== window || !e.data || e.data.__khiam !== 1) return;
+      if (e.data.kind === "inbox") handleFiberInbox(e.data);
+    });
+  }
+  // fallback: قراءة DOM (لو الحقن فشل أو ميتا غيّرت الـ fiber). يتخطّى لو الـ fiber وصل مؤخرًا.
   async function scrapeAndSync() {
     if (SITE !== "meta" || !state.session) return;
+    if (Date.now() - lastFiberAt < 30000) return; // الـ fiber هو المصدر الأساسي
     const d = scrapeMetaInbox();
     if (!d.ok) return; // لم نتعرّف على بنية الصفحة — نتخطّى بأمان
-    // للطابور: المحادثات غير المقروءة فقط (الجديدة/غير المجاب عليها) — نتجنّب إغراق الطابور بالمنتهية
     const unreadItems = d.items.filter((it) => it.unread);
     const comments = isComments() ? unreadItems.length : 0;
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
@@ -714,7 +739,8 @@
 
   // سحب بيانات ميتا الحقيقية (أفضل جهد) على صفحات ميتا فقط
   if (SITE === "meta") {
-    setTimeout(scrapeAndSync, 4000);
+    setupFiberBridge(); // الأساسي: حقن inject.js (قراءة fiber) + استقبال
+    setTimeout(scrapeAndSync, 4000); // fallback DOM (يتخطّى لو fiber شغّال)
     setInterval(scrapeAndSync, 20000);
   }
 
