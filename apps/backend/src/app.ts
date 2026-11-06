@@ -85,6 +85,7 @@ app.use("/api/*", async (c, next) => {
     (path === "/api/history" && m === "GET") ||
     path === "/api/settings" ||
     path === "/api/metrics" ||
+    path === "/api/report/daily" ||
     path === "/api/audit" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
@@ -455,6 +456,9 @@ app.post("/api/inbox", async (c) => {
 
 // ---------- مؤشرات KPI ----------
 app.get("/api/metrics", (c) => c.json(store.kpiSnapshot()));
+
+// ---------- تقرير الأداء اليومي (أدمِن) ----------
+app.get("/api/report/daily", (c) => c.json(store.dailyReport(c.req.query("date") || undefined)));
 
 // ---------- طابور ميتا الإجباري ----------
 app.get("/api/queue", (c) => c.json(store.queueStats()));

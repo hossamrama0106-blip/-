@@ -85,6 +85,41 @@ export interface ReviewRow {
   at: string;
 }
 
+export interface DailyReportRow {
+  employeeId: string;
+  name: string;
+  color: string;
+  whatsapp: string | null;
+  msgs: number;
+  comments: number;
+  orders: number;
+  tasksDone: number;
+  points: number;
+  avgGapMs: number | null;
+  violations: number;
+  reviews: { good: number; ok: number; bad: number };
+  shift: string;
+  online: boolean;
+}
+export interface DailyReport {
+  date: string;
+  generatedAt: string;
+  team: {
+    employees: number;
+    onlineNow: number;
+    msgs: number;
+    comments: number;
+    orders: number;
+    tasksDone: number;
+    points: number;
+    violations: number;
+    reviews: { good: number; ok: number; bad: number };
+    avgHandleMs: number | null;
+  };
+  byChannel: Record<string, { waiting: number; assigned: number }>;
+  rows: DailyReportRow[];
+}
+
 export interface Snapshot {
   employees: Employee[];
   live: Record<string, LiveStatus>;
@@ -134,6 +169,7 @@ export const api = {
     http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings", { method: "POST", body: JSON.stringify(body) }),
 
   metrics: () => http<KpiSnapshot>("/metrics"),
+  reportDaily: (date?: string) => http<DailyReport>(`/report/daily${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   audit: (limit = 150) => http<AuditEntry[]>(`/audit?limit=${limit}`),
   queue: () => http<QueueStats>("/queue"),
   queueNext: (employeeId: string) =>

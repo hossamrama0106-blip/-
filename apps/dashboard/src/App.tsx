@@ -15,6 +15,7 @@ import LiveModal from "./components/LiveModal";
 import Settings from "./components/Settings";
 import KpiPanel from "./components/KpiPanel";
 import AuditLog from "./components/AuditLog";
+import DailyReport from "./components/DailyReport";
 
 export default function App() {
   const { loggedIn, liteMode } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode })));
@@ -28,6 +29,7 @@ export default function App() {
       <Settings />
       <KpiPanel />
       <AuditLog />
+      <DailyReport />
     </div>
   );
 }

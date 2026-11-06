@@ -961,6 +961,74 @@ class Store {
     return { series: this.metrics.slice(-120), reviews: this.reviewStats() };
   }
 
+  /** توزيع الطابور الحالي حسب القناة (منتظر + قيد المعالجة) — لفريق متعدد القنوات */
+  queueByChannel(): Record<string, { waiting: number; assigned: number }> {
+    const out: Record<string, { waiting: number; assigned: number }> = {};
+    for (const t of this.queue) {
+      if (t.status !== QueueStatus.WAITING && t.status !== QueueStatus.ASSIGNED) continue;
+      const ch = t.channel || "messenger";
+      if (!out[ch]) out[ch] = { waiting: 0, assigned: 0 };
+      if (t.status === QueueStatus.WAITING) out[ch].waiting++;
+      else out[ch].assigned++;
+    }
+    return out;
+  }
+
+  /** تقرير أداء يومي شامل (أدمِن) — تجميع لكل موظف + إجماليات الفريق، قابل للتصدير */
+  dailyReport(date = today()) {
+    const inDay = (iso: string | null | undefined) => typeof iso === "string" && iso.slice(0, 10) === date;
+    const rows = this.employees.map((e) => {
+      const c = this.getCounters(e.id, date);
+      const l = this.getLive(e.id);
+      const points = this.points.filter((p) => p.employeeId === e.id && inDay(p.at)).reduce((a, p) => a + p.delta, 0);
+      const violations = this.violations.filter((v) => v.employeeId === e.id && inDay(v.at)).length;
+      let good = 0, ok = 0, bad = 0;
+      for (const r of this.reviews) {
+        if (r.employeeId !== e.id || !inDay(r.at)) continue;
+        if (r.verdict === "good") good++;
+        else if (r.verdict === "ok") ok++;
+        else bad++;
+      }
+      return {
+        employeeId: e.id,
+        name: e.name,
+        color: e.avatarColor,
+        whatsapp: e.whatsapp || null,
+        msgs: c.msgs,
+        comments: c.comments,
+        orders: c.orders,
+        tasksDone: this.tasksDoneToday(e.id),
+        points,
+        avgGapMs: c.avgGapMs,
+        violations,
+        reviews: { good, ok, bad },
+        shift: l.presence,
+        online: l.online,
+      };
+    });
+    const sum = (fn: (r: (typeof rows)[number]) => number) => rows.reduce((a, r) => a + fn(r), 0);
+    const doneToday = this.queue.filter((t) => t.status === QueueStatus.DONE && t.handleMs != null && inDay(t.doneAt));
+    const avgHandleMs = doneToday.length ? Math.round(doneToday.reduce((a, t) => a + (t.handleMs ?? 0), 0) / doneToday.length) : null;
+    return {
+      date,
+      generatedAt: nowIso(),
+      team: {
+        employees: rows.length,
+        onlineNow: rows.filter((r) => r.online).length,
+        msgs: sum((r) => r.msgs),
+        comments: sum((r) => r.comments),
+        orders: sum((r) => r.orders),
+        tasksDone: sum((r) => r.tasksDone),
+        points: sum((r) => r.points),
+        violations: sum((r) => r.violations),
+        reviews: { good: sum((r) => r.reviews.good), ok: sum((r) => r.reviews.ok), bad: sum((r) => r.reviews.bad) },
+        avgHandleMs,
+      },
+      byChannel: this.queueByChannel(),
+      rows,
+    };
+  }
+
   // ---------- سجل التدقيق (أثر أفعال الإدارة الحسّاسة — append-only) ----------
   recordAudit(input: {
     actorId: string;
