@@ -554,64 +554,85 @@
     const m = (document.title || "").match(/\((\d+)\)/);
     return m ? parseInt(m[1], 10) : null;
   }
-  // صفوف المحادثات: نعتمد إشارات شبه ثابتة (role/aria/href) بدل الكلاسات المبهمة المتغيّرة.
-  // الأدق: نلاقي روابط المحادثات ونصعد لأقرب "صف" حاوٍ (يمنع العدّ المزدوج ويلمّ الصف كامل).
-  function metaConversationRows() {
-    const links = Array.from(
-      document.querySelectorAll('a[href*="selected_item_id"], a[href*="thread_id"], a[href*="/inbox/"][role]'),
-    );
+  // صفوف المحادثات: نعتمد إشارة data-surface الثابتة من ميتا نفسها (thread_list/thread_rowN)
+  // — أمتن بكتير من الكلاسات المبهمة اللي بتتغيّر كل نشرة. مضبوطة على DOM إنبوكس Business Suite الحقيقي.
+  const ROW_SURFACE = /thread_list\/thread_row\d+(:priority)?$/;
+  function metaThreadRows() {
+    const all = Array.from(document.querySelectorAll('[data-surface*="thread_list/thread_row"]'));
+    const rows = all.filter((el) => ROW_SURFACE.test(el.getAttribute("data-surface") || ""));
+    if (rows.length) return rows;
+    return metaThreadRowsFallback();
+  }
+  // fallback لو ميتا غيّرت أسماء الـ surfaces: روابط المحادثات (مع استبعاد روابط اختيار القنوات)
+  function metaThreadRowsFallback() {
     const seen = new Set();
-    const rowsFromLinks = [];
-    for (const a of links) {
-      const row = (a.closest && a.closest('[role="row"], [role="listitem"], li, [role="gridcell"]')) || a;
-      if (!seen.has(row)) {
-        seen.add(row);
-        rowsFromLinks.push(row);
-      }
-    }
-    if (rowsFromLinks.length) return rowsFromLinks;
-    // fallback: لو مفيش روابط معروفة، جرّب عناصر دور القائمة وخُد الأكبر
-    let rows = [];
-    for (const s of ['[role="row"]', '[role="listitem"]', '[role="grid"] [role="row"]', '[role="gridcell"] a[href*="inbox"]']) {
-      try {
-        const found = Array.from(document.querySelectorAll(s));
-        if (found.length > rows.length) rows = found;
-      } catch (_) {}
+    const rows = [];
+    for (const a of document.querySelectorAll('a[href*="selected_item_id"]')) {
+      if (a.closest && a.closest('[data-surface*="channel_selector"]')) continue;
+      const row = (a.closest && a.closest('[role="row"], [role="listitem"], li')) || a;
+      if (!seen.has(row)) { seen.add(row); rows.push(row); }
     }
     return rows;
   }
-  function looksUnread(el) {
-    if (!el || !el.getAttribute) return false;
-    const al = (el.getAttribute("aria-label") || "") + " " + (el.getAttribute("aria-description") || "");
-    if (/unread|غير مقروء|new message|رسالة جديدة/i.test(al)) return true;
-    // ميتا بتعلّم غير المقروء بخط ثقيل (600/700/bold)
-    if (el.querySelector && el.querySelector('span[style*="600"], span[style*="700"], span[style*="bold"], b, strong')) return true;
-    return false;
+  function threadLink(row) {
+    if (row.matches && row.matches('a[href*="selected_item_id"]')) return row;
+    return (row.querySelector && row.querySelector('a[href*="selected_item_id"]')) || null;
   }
-  function extIdFrom(el) {
-    const a = el.matches && el.matches("a[href]") ? el : el.querySelector && el.querySelector('a[href*="inbox"], a[href*="selected_item_id"]');
-    const href = (a && a.getAttribute("href")) || "";
-    const m = href.match(/selected_item_id=([^&]+)/) || href.match(/thread[_-]?id=([^&]+)/i);
-    if (m) return "meta_" + m[1];
-    const t = textOf(el).slice(0, 50);
+  function extIdFrom(row) {
+    const href = (threadLink(row) && threadLink(row).getAttribute("href")) || "";
+    const m = href.match(/selected_item_id=([^&]+)/);
+    if (m) return "meta_" + decodeURIComponent(m[1]);
+    const t = textOf(row).slice(0, 50);
     return t ? "txt_" + t.replace(/\s+/g, "_") : null;
+  }
+  function channelOf(row) {
+    const href = (threadLink(row) && threadLink(row).getAttribute("href")) || "";
+    const tt = (href.match(/thread_type=([A-Z_]+)/) || [])[1] || "";
+    if (/IG_/.test(tt)) return "instagram";
+    if (/WA_|WHATSAPP/.test(tt)) return "whatsapp";
+    if (/FB_/.test(tt)) return "messenger";
+    const badge = row.querySelector && row.querySelector('img[alt="Instagram"], img[alt="WhatsApp"], img[alt="Messenger"]');
+    const alt = (badge && badge.getAttribute("alt")) || "";
+    if (alt === "Instagram") return "instagram";
+    if (alt === "WhatsApp") return "whatsapp";
+    if (alt === "Messenger") return "messenger";
+    return CHANNEL;
+  }
+  function titleEl(row) {
+    return (row.querySelector && row.querySelector('[data-surface$="/lib:thread_title"]')) || row;
+  }
+  function isBold(el) {
+    try { return parseInt(getComputedStyle(el).fontWeight, 10) >= 600; } catch (_) { return false; }
+  }
+  // غير مقروء = اسم العميل بخط ثقيل (ميتا تعلّمه كده) — نحسبه بـ getComputedStyle (يتخطّى الكلاسات المبهمة)
+  function rowUnread(row) {
+    const t = titleEl(row);
+    if (isBold(t)) return true;
+    const inner = t.querySelector && t.querySelector("span, div, b, strong");
+    if (inner && isBold(inner)) return true;
+    const al = (row.getAttribute && (row.getAttribute("aria-label") || "")) || "";
+    return /unread|غير مقروء/i.test(al);
   }
   function scrapeMetaInbox() {
     try {
-      const rows = metaConversationRows();
+      const rows = metaThreadRows();
       const items = [];
       const seen = new Set();
+      let unreadCount = 0;
       for (const r of rows.slice(0, 60)) {
-        if (!looksUnread(r)) continue;
+        const unread = rowUnread(r);
+        if (unread) unreadCount++;
         const id = extIdFrom(r);
         if (!id || seen.has(id)) continue;
         seen.add(id);
-        const t = textOf(r);
-        if (!t) continue;
-        items.push({ externalId: id, customerRef: t.slice(0, 40), preview: t.slice(0, 160), channel: CHANNEL });
+        const name = textOf(titleEl(r)).slice(0, 60);
+        const full = textOf(r);
+        const link = (threadLink(r) && threadLink(r).href) || null;
+        const priority = /:priority$/.test(r.getAttribute("data-surface") || "") ? "high" : "normal";
+        items.push({ externalId: id, customerRef: name || full.slice(0, 40), preview: full.slice(0, 160), channel: channelOf(r), link, priority, unread });
       }
-      const unread = metaUnreadFromTitle();
-      return { ok: rows.length > 0, unread: unread == null ? items.length : unread, items };
+      const titleUnread = metaUnreadFromTitle();
+      return { ok: rows.length > 0, unread: titleUnread == null ? unreadCount : titleUnread, items, rowCount: rows.length };
     } catch (e) {
       return { ok: false, unread: null, items: [], error: String(e) };
     }
@@ -619,19 +640,23 @@
   async function scrapeAndSync() {
     if (SITE !== "meta" || !state.session) return;
     const d = scrapeMetaInbox();
-    if (!d.ok) return; // لم نتعرّف على بنية الصفحة — نتخطّى بأمان (يُضبط لاحقًا على DOM الحقيقي)
-    const comments = isComments() ? d.items.length : 0;
+    if (!d.ok) return; // لم نتعرّف على بنية الصفحة — نتخطّى بأمان
+    // للطابور: المحادثات غير المقروءة فقط (الجديدة/غير المجاب عليها) — نتجنّب إغراق الطابور بالمنتهية
+    const unreadItems = d.items.filter((it) => it.unread);
+    const comments = isComments() ? unreadItems.length : 0;
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
-    if (d.items.length) send("queueSync", { items: d.items });
+    if (unreadItems.length) send("queueSync", { items: unreadItems });
   }
-  // تشخيص: افتح console على صفحة ميتا الحقيقية (سياق الإضافة) ونادِ __khiamProbe() لضبط الـ selectors
+  // تشخيص: نادِ __khiamProbe() في console سياق الإضافة لمراجعة القراءة (أطوال فقط — بدون أسماء/نصوص)
   window.__khiamProbe = function () {
-    const rows = metaConversationRows();
+    const rows = metaThreadRows();
     return {
-      title: document.title,
+      url: location.pathname,
+      titlePattern: (document.title || "").replace(/\d+/g, "#"),
       unreadFromTitle: metaUnreadFromTitle(),
       rowCount: rows.length,
-      unreadSample: rows.filter(looksUnread).slice(0, 3).map((r) => textOf(r).slice(0, 80)),
+      unreadCount: rows.filter(rowUnread).length,
+      sample: rows.slice(0, 5).map((r) => ({ idKind: /selected_item_id/.test((threadLink(r) && threadLink(r).getAttribute("href")) || "") ? "meta-id" : "text", channel: channelOf(r), unread: rowUnread(r), nameLen: textOf(titleEl(r)).length, previewLen: textOf(r).length })),
     };
   };
 
