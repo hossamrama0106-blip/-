@@ -178,7 +178,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case "queueSync":
           return sendResponse({ ok: true, data: await api("/api/queue/sync", "POST", { items: (msg.data && msg.data.items) || [] }) });
         case "evaluate":
-          return sendResponse({ ok: true, data: await api("/api/ai/evaluate", "POST", { employeeId: reqId(), conversationRef: msg.data.conversationRef, messages: msg.data.messages }) });
+          return sendResponse({ ok: true, data: await api("/api/ai/evaluate", "POST", { employeeId: reqId(), conversationRef: msg.data.conversationRef, messages: msg.data.messages, transcript: msg.data.transcript }) });
         case "openPopup":
           try { await chrome.action.openPopup(); } catch (_) {}
           return sendResponse({ ok: true });

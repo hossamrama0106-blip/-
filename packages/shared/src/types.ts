@@ -107,6 +107,7 @@ export interface ReplyReview {
   score: number; // 0..100
   aiNotes: string;
   sampleText: string; // آخر الرسائل التي قُيّمت
+  transcript?: { role: string; text: string }[] | null; // مقتطف أوسع من المحادثة (أفضل جهد)
   evidenceUrl: string | null; // لقطة/دليل مرتبط بالتقييم
   at: ISODate;
   approvedBy: ID | null; // اعتماد الإدارة للرد

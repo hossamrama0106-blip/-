@@ -82,6 +82,7 @@ export interface ReviewRow {
   score: number;
   aiNotes: string;
   sampleText: string;
+  transcript?: { role: string; text: string }[] | null;
   at: string;
 }
 

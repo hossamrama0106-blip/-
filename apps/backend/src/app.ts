@@ -444,13 +444,20 @@ app.post("/api/comments/ingest", async (c) => {
 
 app.get("/api/ai/status", (c) => c.json({ mode: aiMode(), nightMode: store.nightMode }));
 app.post("/api/ai/evaluate", async (c) => {
-  const data = await body<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[]; evidenceUrl?: string }>(c, {
+  const data = await body<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[]; transcript?: { role: string; text: string }[]; evidenceUrl?: string }>(c, {
     employeeId: str({ max: 64 }),
     conversationRef: str({ optional: true, max: 200 }),
     messages: arr({ max: 100 }),
+    transcript: arr({ optional: true, max: 40 }),
     evidenceUrl: str({ optional: true, max: 500 }),
   });
   const result = await evaluateReply({ messages: data.messages, conversationRef: data.conversationRef });
+  const transcript = Array.isArray(data.transcript)
+    ? data.transcript
+        .filter((m) => m && typeof m.text === "string" && m.text.trim())
+        .slice(-20)
+        .map((m) => ({ role: m.role === "agent" ? "agent" : "customer", text: String(m.text).slice(0, 300) }))
+    : null;
   const review = store.addReview({
     employeeId: data.employeeId,
     conversationRef: data.conversationRef || "—",
@@ -458,6 +465,7 @@ app.post("/api/ai/evaluate", async (c) => {
     score: result.score,
     aiNotes: result.notes,
     sampleText: (data.messages || []).map((m) => `${m.role}: ${m.text}`).join("\n").slice(0, 400),
+    transcript: transcript && transcript.length ? transcript : null,
     evidenceUrl: data.evidenceUrl ?? null,
   });
   if (result.dealAtRisk) {

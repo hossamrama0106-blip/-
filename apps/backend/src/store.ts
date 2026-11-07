@@ -488,7 +488,7 @@ class Store {
   }
 
   // ---------- reviews / points ----------
-  addReview(input: { employeeId: string; conversationRef: string; verdict: string; score: number; aiNotes: string; sampleText: string; evidenceUrl?: string | null }): ReplyReview {
+  addReview(input: { employeeId: string; conversationRef: string; verdict: string; score: number; aiNotes: string; sampleText: string; transcript?: { role: string; text: string }[] | null; evidenceUrl?: string | null }): ReplyReview {
     const r: ReplyReview = {
       id: uid("rev"),
       employeeId: input.employeeId,
@@ -497,6 +497,7 @@ class Store {
       score: input.score,
       aiNotes: input.aiNotes,
       sampleText: input.sampleText,
+      transcript: input.transcript ?? null,
       evidenceUrl: input.evidenceUrl ?? null,
       at: nowIso(),
       approvedBy: null,

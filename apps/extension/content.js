@@ -776,6 +776,28 @@
       return null;
     }
   }
+  // مقتطف أوسع من المحادثة المفتوحة (أفضل جهد — الدور بالمحاذاة، يحتاج ضبطًا حيًّا على DOM ميتا)
+  function scrapeConversation(limit) {
+    try {
+      const rows = Array.from(document.querySelectorAll('[role="row"]'));
+      const out = [];
+      for (const row of rows) {
+        const el = row.querySelector('[dir="auto"]');
+        const text = el ? ((el.innerText || el.textContent) || "").trim() : "";
+        if (!text || text.length < 2 || text.length > 400) continue;
+        let role = "customer";
+        try {
+          const rr = row.getBoundingClientRect();
+          const er = el.getBoundingClientRect();
+          role = er.left + er.width / 2 < rr.left + rr.width / 2 ? "agent" : "customer";
+        } catch (_) {}
+        out.push({ role, text });
+      }
+      return out.slice(-limit);
+    } catch (_) {
+      return [];
+    }
+  }
   async function maybeEvaluateReply(replyText) {
     if (SITE !== "meta" || !state.session || !replyText || replyText.length < 2) return;
     const customer = scrapeLastCustomerMessage();
@@ -787,7 +809,9 @@
     if (customer) messages.push({ role: "customer", text: customer });
     messages.push({ role: "agent", text: replyText });
     const ref = (state.live && state.live.currentConversation) || (customer ? customer.slice(0, 30) : "محادثة");
-    send("evaluate", { conversationRef: ref, messages });
+    const transcript = scrapeConversation(10);
+    if (!transcript.length || transcript[transcript.length - 1].text !== replyText) transcript.push({ role: "agent", text: replyText });
+    send("evaluate", { conversationRef: ref, messages, transcript });
   }
 
   // ---------- boot ----------

@@ -21,7 +21,7 @@ export default function DetailPanel() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
   const [shot, setShot] = useState<{ dataUrl: string; at: string; width: number } | null>(null);
-  const [reviews, setReviews] = useState<Array<{ id: string; verdict: string; score: number; aiNotes: string; conversationRef: string; evidenceUrl?: string | null }>>([]);
+  const [reviews, setReviews] = useState<Array<{ id: string; verdict: string; score: number; aiNotes: string; conversationRef: string; transcript?: { role: string; text: string }[] | null; evidenceUrl?: string | null }>>([]);
   const [timeline, setTimeline] = useState<Array<{ id: string; label: string; category: string; at: string }>>([]);
   const [history, setHistory] = useState<Array<{ id: string; url: string; title: string; visitAt: string }>>([]);
   const [vioLink, setVioLink] = useState("");
@@ -225,6 +225,19 @@ export default function DetailPanel() {
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-slate-200">{r.aiNotes}</div>
                     <div className="text-[10px] text-slate-500 truncate">{r.conversationRef} · {r.score}/100</div>
+                    {r.transcript && r.transcript.length > 0 && (
+                      <details className="mt-1">
+                        <summary className="text-[10px] text-brand-400 cursor-pointer select-none">عرض مقتطف المحادثة ({r.transcript.length})</summary>
+                        <div className="mt-1 space-y-1 flex flex-col">
+                          {r.transcript.map((m, i) => (
+                            <div key={i} className={`text-[11px] rounded px-2 py-1 max-w-[88%] ${m.role === "agent" ? "bg-brand-500/15 text-brand-200 self-start" : "bg-ink-800 text-slate-300 self-end"}`}>
+                              <span className="opacity-60">{m.role === "agent" ? "الموظف" : "العميل"}: </span>
+                              {m.text}
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
                     {r.evidenceUrl && <img src={r.evidenceUrl} alt="دليل" className="mt-1 h-16 rounded border border-ink-800" />}
                   </div>
                 </div>
