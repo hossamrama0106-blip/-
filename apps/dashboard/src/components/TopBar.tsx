@@ -3,7 +3,7 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, adminId, alerts, queue, role } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, adminId, alerts, queue, role, theme, setTheme } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     role: s.role,
@@ -19,6 +19,8 @@ export default function TopBar() {
     setShowAudit: s.setShowAudit,
     setShowReport: s.setShowReport,
     setShowTour: s.setShowTour,
+    theme: s.theme,
+    setTheme: s.setTheme,
     alerts: s.alerts,
     queue: s.queue,
   })));
@@ -55,6 +57,13 @@ export default function TopBar() {
         className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
       >
         ؟
+      </button>
+      <button
+        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
+        title="تبديل الوضع الفاتح/الداكن"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        {theme === "light" ? "🌙" : "☀️"}
       </button>
       <button
         onClick={() => {

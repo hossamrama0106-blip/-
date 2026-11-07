@@ -3,6 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // تطبيق الوضع المحفوظ قبل أول رسم (يمنع وميض الوضع الداكن)
+      try { if (localStorage.getItem("khiam_theme") === "light") document.documentElement.setAttribute("data-theme", "light"); } catch (e) {}
+    </script>
     <title>Khiam Ops — داشبورد الإدارة</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

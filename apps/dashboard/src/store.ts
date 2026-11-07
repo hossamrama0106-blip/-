@@ -28,6 +28,7 @@ interface DashState {
   showReport: boolean;
   showTour: boolean;
   role: string;
+  theme: string;
 
   login: (username: string, password: string) => Promise<void>;
   loadSnapshot: () => Promise<void>;
@@ -42,6 +43,7 @@ interface DashState {
   setShowAudit: (v: boolean) => void;
   setShowReport: (v: boolean) => void;
   setShowTour: (v: boolean) => void;
+  setTheme: (t: "light" | "dark") => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
 }
@@ -72,6 +74,7 @@ export const useDash = create<DashState>((set, get) => ({
   showAudit: false,
   showReport: false,
   showTour: false,
+  theme: typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark",
 
   async login(username: string, password: string) {
     const res: any = await api.login(username, password);
@@ -184,6 +187,16 @@ export const useDash = create<DashState>((set, get) => ({
   setShowAudit: (v) => set({ showAudit: v }),
   setShowReport: (v) => set({ showReport: v }),
   setShowTour: (v) => set({ showTour: v }),
+  setTheme: (t) => {
+    try {
+      localStorage.setItem("khiam_theme", t);
+    } catch {
+      /* الوضع الخاص قد يمنع التخزين */
+    }
+    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
+    else document.documentElement.removeAttribute("data-theme");
+    set({ theme: t });
+  },
   async setNight(v) {
     try {
       await api.setNightMode(v);

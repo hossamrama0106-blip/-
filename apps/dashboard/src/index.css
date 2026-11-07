@@ -29,6 +29,38 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ---------- الوضع الفاتح (يبدّل متغيّرات ألوان الثيم) ---------- */
+[data-theme="light"] {
+  color-scheme: light;
+  --color-ink-950: #eef2f7; /* خلفية الصفحة */
+  --color-ink-900: #f8fafc; /* مدخلات/أسطح داخلية */
+  --color-ink-850: #ffffff; /* بطاقات/نوافذ */
+  --color-ink-800: #e2e8f0; /* حدود/تمرير */
+  --color-ink-700: #cbd5e1; /* حدود */
+  --color-white: #0f172a; /* النص القوي (عناوين) يصبح غامقًا */
+  --color-slate-200: #1e293b;
+  --color-slate-300: #334155;
+  --color-slate-400: #475569;
+  --color-slate-500: #64748b;
+  --color-slate-600: #94a3b8;
+}
+[data-theme="light"] body {
+  background: var(--color-ink-950);
+  color: #0f172a;
+}
+/* الأزرار/اللافتات ذات الخلفية الصلبة الملوّنة تحافظ على نص أبيض */
+[data-theme="light"] .bg-brand-500,
+[data-theme="light"] .bg-brand-400,
+[data-theme="light"] .bg-emerald-600,
+[data-theme="light"] .bg-red-600,
+[data-theme="light"] .bg-sky-600,
+[data-theme="light"] .bg-orange-600 {
+  color: #ffffff;
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
