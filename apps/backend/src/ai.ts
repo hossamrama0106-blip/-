@@ -140,7 +140,7 @@ function providers(): Provider[] {
   const groq = process.env.GROQ_API_KEY;
   const openrouter = process.env.OPENROUTER_API_KEY;
   const gemini = process.env.GEMINI_API_KEY;
-  if (groq) list.push({ name: "groq", run: (i) => evalOpenAICompat(i, "https://api.groq.com/openai/v1/chat/completions", groq, process.env.GROQ_MODEL || "llama-3.3-70b-versatile") });
+  if (groq) list.push({ name: "groq", run: (i) => evalOpenAICompat(i, "https://api.groq.com/openai/v1/chat/completions", groq, process.env.GROQ_MODEL || "openai/gpt-oss-120b") });
   if (openrouter) list.push({ name: "openrouter", run: (i) => evalOpenAICompat(i, "https://openrouter.ai/api/v1/chat/completions", openrouter, process.env.OPENROUTER_MODEL || "meta-llama/llama-3.3-70b-instruct:free") });
   if (gemini) list.push({ name: "gemini", run: (i) => evalGemini(i, gemini, process.env.GEMINI_MODEL || "gemini-1.5-flash") });
   return list;
