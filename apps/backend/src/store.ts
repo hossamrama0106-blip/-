@@ -1276,6 +1276,7 @@ class Store {
       v: 1,
       employees: this.employees,
       creds: Object.fromEntries(this.creds),
+      // اللاسلكي: لا نحفظ الصوت (عابر) — نسقطه من اللقطة لتجنّب التضخّم
       live: Object.fromEntries(this.live),
       shifts: this.shifts,
       breaks: this.breaks,
@@ -1284,7 +1285,7 @@ class Store {
       reviews: this.reviews,
       points: this.points,
       violations: this.violations,
-      notifications: this.notifications,
+      notifications: this.notifications.map((n) => (n.audioUrl ? { ...n, audioUrl: null } : n)),
       chat: this.chat,
       alerts: this.alerts,
       nightMode: this.nightMode,

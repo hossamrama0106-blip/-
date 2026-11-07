@@ -170,7 +170,7 @@ export const api = {
   setFlags: (id: string, flags: { liveWatching?: boolean; spotlight?: boolean; superMonitor?: boolean }) =>
     http<LiveStatus>(`/employees/${id}/flags`, { method: "POST", body: JSON.stringify(flags) }),
 
-  sendNotification: (data: { type: string; from: string; to: string; body: string }) =>
+  sendNotification: (data: { type: string; from: string; to: string; body: string; audioUrl?: string }) =>
     http<NotificationItem>("/notifications", { method: "POST", body: JSON.stringify(data) }),
   addViolation: (data: { employeeId: string; type: string; severity?: string; reason: string; link?: string; imageUrl?: string }) =>
     http<Violation>("/violations", { method: "POST", body: JSON.stringify(data) }),

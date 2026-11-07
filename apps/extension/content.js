@@ -93,6 +93,14 @@
       window.speechSynthesis.speak(u);
     } catch (_) {}
   }
+  // لاسلكي: تشغيل صوت حقيقي مُرسَل من الإدارة (data URL)
+  function playVoice(url) {
+    try {
+      const a = new Audio(url);
+      a.volume = 1;
+      a.play().catch(() => {});
+    } catch (_) {}
+  }
 
   // ---------- shadow bar ----------
   let root, els;
@@ -531,7 +539,7 @@
       state.seenNotif.add(n.id);
       const titles = { notice: "إشعار", message: "رسالة من الإدارة", violation: "⚠ مخالفة", broadcast_audio: "🔊 نداء صوتي", spotlight: "🔴 عين الرقابة" };
       toast(titles[n.type] || "إشعار", n.body, n.type === "broadcast_audio" || n.type === "violation");
-      if (n.type === "broadcast_audio") speak(n.body);
+      if (n.type === "broadcast_audio") { if (n.audioUrl) playVoice(n.audioUrl); else speak(n.body); }
     });
   }
 

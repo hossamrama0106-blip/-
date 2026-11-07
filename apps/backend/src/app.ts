@@ -502,11 +502,12 @@ app.get("/api/notifications", (c) => {
   return c.json(list);
 });
 app.post("/api/notifications", async (c) => {
-  const data = await body<{ type: string; from: string; to: string; body: string }>(c, {
+  const data = await body<{ type: string; from: string; to: string; body: string; audioUrl?: string }>(c, {
     type: oneOf(Object.values(NotificationType)),
     from: str({ max: 64 }),
     to: str({ max: 64 }),
     body: str({ max: 1000, allowEmpty: true }),
+    audioUrl: str({ optional: true, max: 700000 }), // لاسلكي: صوت حقيقي (data URL، مُقيَّد الحجم)
   });
   const n = store.addNotification(data);
   const a = actor(c);

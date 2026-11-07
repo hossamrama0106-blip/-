@@ -1,6 +1,7 @@
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api } from "../api";
+import PushToTalk from "./PushToTalk";
 
 export default function TopBar() {
   const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme } = useDash(useShallow((s) => ({
@@ -83,6 +84,7 @@ export default function TopBar() {
       >
         {theme === "light" ? "🌙" : "☀️"}
       </button>
+      <PushToTalk />
       <button
         onClick={() => {
           const t = prompt("اكتب نص النداء الصوتي لكل الموظفين (هيُنطق عند الجميع):");
