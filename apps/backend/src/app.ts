@@ -78,7 +78,8 @@ app.use("/api/*", async (c, next) => {
     path.startsWith("/api/employees") ||
     path === "/api/settings" ||
     (path === "/api/waha/send" && m === "POST") ||
-    path.startsWith("/api/system/");
+    path.startsWith("/api/system/") ||
+    path === "/api/command";
   if (adminStrict && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
 
   // أفعال الإشراف (المدير + قائد الفريق): لوحات المراقبة والتقارير والطابور
@@ -315,6 +316,27 @@ app.post("/api/employees/:id/logout", (c) => {
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "session_revoke", targetId: id, details: "تسجيل خروج إجباري (قطع الجلسة)", ip: clientIp(c) });
   return c.json({ ok: true });
+});
+
+// ---------- تحكّم عن بُعد (أوامر آمنة للإكستنشن/البرنامج — مدير فقط) ----------
+// مجموعة أوامر محدّدة فقط (بدون تنفيذ أكواد عشوائية). open_url محصور بروابط http(s).
+const SAFE_CMDS = new Set(["reload", "logout", "refresh_config", "ping", "screenshot_now"]);
+app.post("/api/command", async (c) => {
+  const { to, cmd } = await body<{ to: string; cmd: string }>(c, { to: str({ max: 64 }), cmd: str({ max: 300 }) });
+  const base = cmd.split(":")[0];
+  if (!SAFE_CMDS.has(base) && base !== "open_url") return c.json({ error: "أمر غير مسموح" }, 400);
+  if (base === "open_url" && !/^open_url:https?:\/\//i.test(cmd)) return c.json({ error: "رابط غير صالح" }, 400);
+  let sent = 0;
+  if (to === "all") {
+    for (const e of store.employees) if (e.role === Role.EMPLOYEE) { store.queueCommand(e.id, cmd); sent++; }
+  } else {
+    if (!store.findEmployee(to)) return c.json({ error: "موظف غير موجود" }, 404);
+    store.queueCommand(to, cmd);
+    sent = 1;
+  }
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "command_send", targetId: to === "all" ? null : to, targetName: to === "all" ? "الجميع" : undefined, details: `أمر عن بُعد: ${cmd} → ${to === "all" ? "الجميع" : to} (${sent})`, ip: clientIp(c) });
+  return c.json({ ok: true, sent });
 });
 
 // ---------- presence / heartbeat ----------

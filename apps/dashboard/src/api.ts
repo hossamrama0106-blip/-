@@ -188,6 +188,7 @@ export const api = {
 
   metrics: () => http<KpiSnapshot>("/metrics"),
   comments: () => http<CommentsFeed>("/comments"),
+  command: (to: string, cmd: string) => http<{ ok: boolean; sent: number }>("/command", { method: "POST", body: JSON.stringify({ to, cmd }) }),
   reportDaily: (date?: string) => http<DailyReport>(`/report/daily${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   // إرسال واتساب تلقائي عبر WAHA (نائم بدون WAHA_URL → يرجّع {dormant:true})
   wahaSend: (data: { employeeId: string; text: string; image?: string }) =>

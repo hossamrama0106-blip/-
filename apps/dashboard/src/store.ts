@@ -28,6 +28,7 @@ interface DashState {
   showReport: boolean;
   showTour: boolean;
   showComments: boolean;
+  showRemote: boolean;
   role: string;
   theme: string;
 
@@ -45,6 +46,7 @@ interface DashState {
   setShowReport: (v: boolean) => void;
   setShowTour: (v: boolean) => void;
   setShowComments: (v: boolean) => void;
+  setShowRemote: (v: boolean) => void;
   setTheme: (t: "light" | "dark") => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
@@ -77,6 +79,7 @@ export const useDash = create<DashState>((set, get) => ({
   showReport: false,
   showTour: false,
   showComments: false,
+  showRemote: false,
   theme: typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark",
 
   async login(username: string, password: string) {
@@ -191,6 +194,7 @@ export const useDash = create<DashState>((set, get) => ({
   setShowReport: (v) => set({ showReport: v }),
   setShowTour: (v) => set({ showTour: v }),
   setShowComments: (v) => set({ showComments: v }),
+  setShowRemote: (v) => set({ showRemote: v }),
   setTheme: (t) => {
     try {
       localStorage.setItem("khiam_theme", t);

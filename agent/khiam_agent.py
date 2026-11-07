@@ -283,7 +283,20 @@ def main():
             flag_live = bool(live.get("liveWatching")) or bool(live.get("superMonitor"))
             print(f"[{time.strftime('%H:%M:%S')}] نافذة='{payload['currentWindow']}' فئة={cat} خمول={idle // 1000}ث لايف={'●' if flag_live else '-'}")
 
-            if flag_live and cfg["allowCapture"] and capture_available():
+            # أوامر الإدارة عن بُعد (من رد presence)
+            force_capture = False
+            for cmd in (live.get("commands") or []):
+                if cmd == "ping":
+                    print("   📡 ping من الإدارة — نشط")
+                elif cmd == "reload":
+                    print("   🔄 إعادة تحميل الإعدادات…")
+                    cfg = load_config()
+                    interval = max(3, int(cfg["intervalSeconds"]))
+                elif cmd == "screenshot_now":
+                    force_capture = True
+                    last_capture = 0.0
+
+            if (flag_live or force_capture) and cfg["allowCapture"] and capture_available():
                 now = time.time()
                 if now - last_capture >= int(cfg["captureIntervalSeconds"]):
                     last_capture = now

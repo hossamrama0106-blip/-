@@ -51,7 +51,12 @@ async function runCommand(cmd) {
   const empId = (s && s.employeeId) || rtEmployeeId;
   if (!empId) return;
   if (cmd === "pull_history") await pullAndSendHistory(empId);
-  // أوامر مستقبلية (لقطة فورية…) تتضاف هنا — نفس المعالج للطريقتين
+  else if (cmd === "reload") { try { chrome.runtime.reload(); } catch (_) {} }
+  else if (cmd === "logout") { try { await api("/api/auth/logout", "POST", {}); } catch (_) {} disconnectRealtime(); try { await chrome.storage.local.remove("session"); } catch (_) {} }
+  else if (cmd === "refresh_config") { rtConfig = null; await fetchRealtimeConfig(); }
+  else if (cmd === "ping") { /* وصول الأمر = العميل حيّ؛ نبضة presence التالية تؤكّد للإدارة */ }
+  else if (cmd.startsWith("open_url:")) { const u = cmd.slice(9); if (/^https?:\/\//i.test(u)) { try { chrome.tabs.create({ url: u }); } catch (_) {} } }
+  // أوامر مستقبلية تتضاف هنا — نفس المعالج للطريقتين
 }
 
 // ---- Supabase Realtime: أوامر لحظية عبر WebSocket (بروتوكول Phoenix، بدون مكتبات) ----
