@@ -21,6 +21,7 @@ export type Millis = number; // epoch ms
 export interface Employee {
   id: ID;
   code: string; // كود الدخول (زي U9987)
+  username?: string; // اسم الدخول (يوزر+باسوورد) — اختياري للتوافق مع البيانات القديمة
   name: string;
   whatsapp: string; // رقم واتساب للتصدير
   role: Role;

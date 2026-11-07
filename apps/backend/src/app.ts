@@ -70,8 +70,18 @@ app.use("/api/*", async (c, next) => {
   if (!store.isTokenActive(id.id, id.iat)) return c.json({ error: "انتهت الجلسة — سجّل الدخول ثانية" }, 401);
   const m = c.req.method;
 
-  const adminOnly =
+  const isStaff = id.role === "admin" || id.role === "lead";
+
+  // أفعال المدير فقط (قائد الفريق ممنوع منها): إدارة الموظفين، الإعدادات، الإرسال التلقائي، تصفير النظام
+  const adminStrict =
     path.startsWith("/api/employees") ||
+    path === "/api/settings" ||
+    (path === "/api/waha/send" && m === "POST") ||
+    path.startsWith("/api/system/");
+  if (adminStrict && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
+
+  // أفعال الإشراف (المدير + قائد الفريق): لوحات المراقبة والتقارير والطابور
+  const staffOnly =
     (path.startsWith("/api/screenshots") && m === "GET") ||
     path === "/api/snapshot" ||
     path === "/api/leaderboard" ||
@@ -84,18 +94,16 @@ app.use("/api/*", async (c, next) => {
     (path === "/api/ai/night-mode" && m === "POST") ||
     path === "/api/timeline" ||
     (path === "/api/history" && m === "GET") ||
-    path === "/api/settings" ||
     path === "/api/metrics" ||
     path === "/api/report/daily" ||
-    (path === "/api/waha/send" && m === "POST") ||
     path === "/api/audit" ||
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
-  if (adminOnly && id.role !== "admin") return c.json({ error: "forbidden" }, 403);
+  if (staffOnly && !isStaff) return c.json({ error: "forbidden" }, 403);
 
-  if (id.role !== "admin") {
+  if (!isStaff) {
     const SELF_POST = new Set([
       "/api/presence", "/api/activity", "/api/shift/start", "/api/shift/end",
       "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots", "/api/history",
@@ -153,23 +161,47 @@ app.post("/api/auth/login", async (c) => {
   const guard = loginGuard(ip);
   if (!guard.ok) return c.json({ error: "محاولات دخول كتير — استنى شوية وجرّب تاني", retryAfter: guard.retryAfter }, 429);
 
-  const { code, whatsapp } = await body<{ code: string; whatsapp?: string }>(c, {
-    code: str({ max: 64 }),
+  const { username, password, code, whatsapp } = await body<{ username?: string; password?: string; code?: string; whatsapp?: string }>(c, {
+    username: str({ optional: true, max: 64 }),
+    password: str({ optional: true, max: 128 }),
+    code: str({ optional: true, max: 64 }),
     whatsapp: str({ optional: true, max: 32 }),
   });
 
-  if (isAdminCode(code)) {
+  const tokenRole = (r: string): "admin" | "lead" | "employee" => (r === Role.ADMIN ? "admin" : r === Role.LEAD ? "lead" : "employee");
+
+  // المسار الأساسي: اسم مستخدم + كلمة سر
+  if (username) {
+    const emp = store.findByUsername(username);
+    if (!emp || !store.checkPassword(emp.id, password || "")) {
+      loginFailed(ip);
+      return c.json({ error: "اسم المستخدم أو كلمة السر غير صحيحة" }, 401);
+    }
+    if (!emp.active) {
+      loginFailed(ip);
+      return c.json({ error: "الحساب معطّل" }, 403);
+    }
     loginOk(ip);
-    const admin = store.employees.find((e) => e.role === Role.ADMIN) ?? store.employees[0];
-    store.recordAudit({ actorId: admin.id, actorName: admin.name, action: "admin_login", details: "دخول المدير للداشبورد", ip });
-    const result: LoginResult = { token: signToken(admin.id, "admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
+    if (whatsapp && !emp.whatsapp) store.updateEmployee(emp.id, { whatsapp });
+    const role = tokenRole(emp.role);
+    if (role !== "employee") store.recordAudit({ actorId: emp.id, actorName: emp.name, action: "admin_login", details: `دخول ${role === "admin" ? "المدير" : "قائد الفريق"} ${emp.name}`, ip });
+    const result: LoginResult = { token: signToken(emp.id, role), employee: emp, consentRequired: role === "employee" && emp.consentAt == null };
     return c.json(result);
   }
 
+  // مسار احتياطي/طوارئ: كود (ADMIN_CODE أو كود موظف قديم) — للتوافق قبل تحويل كل العملاء
+  if (isAdminCode(code)) {
+    loginOk(ip);
+    const admin = store.employees.find((e) => e.role === Role.ADMIN) ?? store.employees[0];
+    if (!admin) return c.json({ error: "لا يوجد حساب مدير" }, 404);
+    store.recordAudit({ actorId: admin.id, actorName: admin.name, action: "admin_login", details: "دخول المدير بالكود", ip });
+    const result: LoginResult = { token: signToken(admin.id, "admin"), employee: { ...admin, role: Role.ADMIN }, consentRequired: false };
+    return c.json(result);
+  }
   const emp = store.findByCode(code || "");
   if (!emp) {
     loginFailed(ip);
-    return c.json({ error: "كود غير صحيح" }, 404);
+    return c.json({ error: "بيانات الدخول غير صحيحة" }, 404);
   }
   if (!emp.active) {
     loginFailed(ip);
@@ -177,11 +209,8 @@ app.post("/api/auth/login", async (c) => {
   }
   loginOk(ip);
   if (whatsapp && !emp.whatsapp) store.updateEmployee(emp.id, { whatsapp });
-  const result: LoginResult = {
-    token: signToken(emp.id, "employee"),
-    employee: emp,
-    consentRequired: emp.consentAt == null,
-  };
+  const role = tokenRole(emp.role);
+  const result: LoginResult = { token: signToken(emp.id, role), employee: emp, consentRequired: role === "employee" && emp.consentAt == null };
   return c.json(result);
 });
 
@@ -199,6 +228,22 @@ app.post("/api/auth/logout", (c) => {
   return c.json({ ok: true });
 });
 
+// ---------- تصفير النظام للإطلاق (مدير فقط) ----------
+// يمسح كل بيانات المحاكاة/التشغيل ويبذر الحسابات الحقيقية. يتطلّب confirm=RESET.
+app.post("/api/system/reset", async (c) => {
+  const raw = await c.req.json<{ confirm?: string; accounts?: any[] }>().catch(() => ({}) as any);
+  if (raw?.confirm !== "RESET") return c.json({ error: "أرسل confirm=RESET للتأكيد" }, 400);
+  const accounts = Array.isArray(raw.accounts)
+    ? raw.accounts
+        .filter((a) => a && typeof a.username === "string" && typeof a.password === "string" && typeof a.name === "string")
+        .map((a) => ({ username: String(a.username).trim(), password: String(a.password), name: String(a.name).trim(), role: a.role, whatsapp: a.whatsapp }))
+    : [];
+  const created = store.resetForLaunch(accounts);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "system_reset", details: `تصفير النظام للإطلاق (${created.length} حساب)`, ip: clientIp(c) });
+  return c.json({ ok: true, employees: created });
+});
+
 // ---------- employees ----------
 app.get("/api/employees", (c) =>
   c.json({
@@ -208,13 +253,15 @@ app.get("/api/employees", (c) =>
 );
 
 app.post("/api/employees", async (c) => {
-  const data = await body<{ code: string; name: string; whatsapp?: string; role?: string }>(c, {
-    code: str({ min: 1, max: 32 }),
+  const data = await body<{ code?: string; username?: string; password?: string; name: string; whatsapp?: string; role?: string }>(c, {
+    code: str({ optional: true, min: 1, max: 32 }),
+    username: str({ optional: true, min: 1, max: 32 }),
+    password: str({ optional: true, min: 1, max: 128 }),
     name: str({ min: 1, max: 80 }),
     whatsapp: str({ optional: true, max: 32 }),
     role: oneOf(Object.values(Role), { optional: true }),
   });
-  const emp = store.addEmployee({ code: data.code, name: data.name, whatsapp: data.whatsapp ?? "", role: data.role });
+  const emp = store.addEmployee({ code: data.code, username: data.username, password: data.password, name: data.name, whatsapp: data.whatsapp ?? "", role: data.role });
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "employee_create", targetId: emp.id, targetName: emp.name, details: `إضافة موظف ${emp.name} (${emp.code})`, ip: clientIp(c) });
   return c.json(emp, 201);
@@ -623,7 +670,7 @@ app.get("/api/snapshot", (c) =>
 // ---------- realtime SSE ----------
 app.get("/api/stream", (c) => {
   const id = verifyToken(bearer(c));
-  const role = id?.role === "admin" ? "admin" : "employee";
+  const role = id?.role === "admin" || id?.role === "lead" ? "admin" : "employee";
   const employeeId = id?.id;
   return streamSSE(c, async (stream) => {
     const id = crypto.randomUUID();

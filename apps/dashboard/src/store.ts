@@ -26,8 +26,9 @@ interface DashState {
   showKpi: boolean;
   showAudit: boolean;
   showReport: boolean;
+  role: string;
 
-  login: (code: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<void>;
   loadSnapshot: () => Promise<void>;
   connect: () => void;
   select: (id: string | null) => void;
@@ -49,6 +50,7 @@ export const useDash = create<DashState>((set, get) => ({
   connected: false,
   loggedIn: false,
   adminId: null,
+  role: "admin",
   liteMode: false,
   nightMode: false,
 
@@ -68,10 +70,10 @@ export const useDash = create<DashState>((set, get) => ({
   showAudit: false,
   showReport: false,
 
-  async login(code: string) {
-    const res: any = await api.login(code);
+  async login(username: string, password: string) {
+    const res: any = await api.login(username, password);
     setToken(res.token);
-    set({ loggedIn: true, adminId: res.employee?.id ?? "admin" });
+    set({ loggedIn: true, adminId: res.employee?.id ?? "admin", role: res.employee?.role ?? "admin" });
     await get().loadSnapshot();
     get().connect();
   },

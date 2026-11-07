@@ -101,6 +101,7 @@ export type ViolationSeverity = (typeof ViolationSeverity)[keyof typeof Violatio
 /** أدوار المستخدمين */
 export const Role = {
   ADMIN: "admin",
+  LEAD: "lead", // قائد فريق — إشراف ومراقبة بدون إدارة حسابات/إعدادات
   EMPLOYEE: "employee",
 } as const;
 export type Role = (typeof Role)[keyof typeof Role];

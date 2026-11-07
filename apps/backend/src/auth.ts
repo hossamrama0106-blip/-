@@ -1,5 +1,5 @@
 // مصادقة بتوكنات موقّعة (HMAC-SHA256). لا تُحفظ أسرار على العميل، والتوكن يُتحقق منه على السيرفر.
-import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual, scryptSync } from "node:crypto";
 
 const IS_PROD = process.env.NODE_ENV === "production";
 
@@ -30,7 +30,7 @@ if (!ENV_ADMIN_CODE) {
 
 export interface Identity {
   id: string;
-  role: "admin" | "employee";
+  role: "admin" | "lead" | "employee";
   iat: number;
 }
 
@@ -38,9 +38,31 @@ function sign(payload: string): string {
   return createHmac("sha256", SECRET).update(payload).digest("base64url");
 }
 
-export function signToken(id: string, role: "admin" | "employee"): string {
+export function signToken(id: string, role: "admin" | "lead" | "employee"): string {
   const payload = Buffer.from(JSON.stringify({ id, role, iat: Date.now() })).toString("base64url");
   return `${payload}.${sign(payload)}`;
+}
+
+// ---------- تجزئة كلمات السر (scrypt عبر node:crypto — بدون مكتبات) ----------
+/** تجزئة كلمة سر جديدة. الصيغة: s2$<saltHex>$<hashHex> */
+export function hashPassword(plain: string): string {
+  const salt = randomBytes(16);
+  const hash = scryptSync(String(plain ?? ""), salt, 32);
+  return `s2$${salt.toString("hex")}$${hash.toString("hex")}`;
+}
+/** تحقّق كلمة السر ضد التجزئة المخزّنة (مقارنة ثابتة الزمن). */
+export function verifyPassword(plain: string, stored: string | undefined | null): boolean {
+  if (!stored) return false;
+  const parts = stored.split("$");
+  if (parts.length !== 3 || parts[0] !== "s2") return false;
+  try {
+    const salt = Buffer.from(parts[1], "hex");
+    const want = Buffer.from(parts[2], "hex");
+    const got = scryptSync(String(plain ?? ""), salt, want.length);
+    return want.length === got.length && timingSafeEqual(want, got);
+  } catch {
+    return false;
+  }
 }
 
 export function verifyToken(token: string | undefined | null): Identity | null {

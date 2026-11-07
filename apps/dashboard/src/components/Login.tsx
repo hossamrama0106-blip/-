@@ -3,7 +3,8 @@ import { useDash } from "../store";
 
 export default function Login() {
   const login = useDash((s) => s.login);
-  const [code, setCode] = useState("ADMIN");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -12,7 +13,7 @@ export default function Login() {
     setBusy(true);
     setErr(null);
     try {
-      await login(code.trim());
+      await login(username.trim(), password);
     } catch (e: any) {
       setErr(e.message ?? "فشل الدخول");
     } finally {
@@ -27,13 +28,23 @@ export default function Login() {
           <div className="text-3xl font-extrabold text-white">Khiam Ops</div>
           <div className="text-sm text-slate-400 mt-1">داشبورد إدارة فريق خدمة العملاء</div>
         </div>
-        <label className="block text-sm text-slate-300 mb-2">كود الدخول</label>
+        <label className="block text-sm text-slate-300 mb-2">اسم المستخدم</label>
         <input
-          value={code}
-          onChange={(e) => setCode(e.target.value)}
-          placeholder="ADMIN"
-          className="w-full bg-ink-900 border border-ink-700 rounded-xl px-4 py-3 text-white outline-none focus:border-brand-400 text-center text-lg tracking-widest"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="اسم المستخدم"
+          className="w-full bg-ink-900 border border-ink-700 rounded-xl px-4 py-3 text-white outline-none focus:border-brand-400 mb-3"
           autoFocus
+          dir="ltr"
+        />
+        <label className="block text-sm text-slate-300 mb-2">كلمة السر</label>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="كلمة السر"
+          className="w-full bg-ink-900 border border-ink-700 rounded-xl px-4 py-3 text-white outline-none focus:border-brand-400"
+          dir="ltr"
         />
         {err && <div className="text-red-400 text-sm mt-3 text-center">{err}</div>}
         <button
@@ -42,9 +53,7 @@ export default function Login() {
         >
           {busy ? "جارٍ الدخول…" : "دخول"}
         </button>
-        <div className="text-xs text-slate-500 text-center mt-4">
-          وضع التطوير: استخدم <span className="text-slate-300 font-mono">ADMIN</span> للدخول كمدير
-        </div>
+        <div className="text-xs text-slate-500 text-center mt-4">للمدير وقائد الفريق — ادخل باسم المستخدم وكلمة السر</div>
       </form>
     </div>
   );

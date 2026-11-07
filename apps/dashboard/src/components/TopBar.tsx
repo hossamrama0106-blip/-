@@ -3,9 +3,10 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, adminId, alerts, queue } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, adminId, alerts, queue, role } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
+    role: s.role,
     inbox: s.inbox,
     live: s.live,
     employees: s.employees,
@@ -78,13 +79,15 @@ export default function TopBar() {
       >
         🧾
       </button>
-      <button
-        onClick={() => setShowSettings(true)}
-        title="الإعدادات والتكاملات"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        ⚙️
-      </button>
+      {role === "admin" && (
+        <button
+          onClick={() => setShowSettings(true)}
+          title="الإعدادات والتكاملات"
+          className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+        >
+          ⚙️
+        </button>
+      )}
       <button
         onClick={() => setNight(!nightMode)}
         title="الرادار الليلي الآلي"

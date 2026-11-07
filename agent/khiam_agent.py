@@ -19,6 +19,8 @@ IS_WIN = sys.platform.startswith("win")
 
 DEFAULTS = {
     "backend": "http://localhost:8787",
+    "username": "",
+    "password": "",
     "code": "",
     "intervalSeconds": 10,
     "allowCapture": False,
@@ -39,11 +41,17 @@ def load_config():
         except Exception as e:
             print("config.json خطأ:", e)
     ap = argparse.ArgumentParser()
+    ap.add_argument("--username")
+    ap.add_argument("--password")
     ap.add_argument("--code")
     ap.add_argument("--backend")
     ap.add_argument("--interval", type=int)
     ap.add_argument("--capture", action="store_true")
     a = ap.parse_args()
+    if a.username:
+        cfg["username"] = a.username
+    if a.password:
+        cfg["password"] = a.password
     if a.code:
         cfg["code"] = a.code
     if a.backend:
@@ -52,6 +60,8 @@ def load_config():
         cfg["intervalSeconds"] = a.interval
     if a.capture:
         cfg["allowCapture"] = True
+    cfg["username"] = cfg["username"] or os.environ.get("KHIAM_USERNAME", "")
+    cfg["password"] = cfg["password"] or os.environ.get("KHIAM_PASSWORD", "")
     cfg["code"] = cfg["code"] or os.environ.get("KHIAM_CODE", "")
     return cfg
 
@@ -193,21 +203,23 @@ def capture_webp(max_width, quality):
 
 def main():
     cfg = load_config()
-    if not cfg["code"]:
-        print("لازم كود الموظف:  python khiam_agent.py --code K1003")
+    if not cfg.get("username") and not cfg["code"]:
+        print("لازم دخول الموظف:  python khiam_agent.py --username mrsam511 --password ****")
         sys.exit(1)
     backend = cfg["backend"].rstrip("/")
-    print(f"Khiam Agent — backend={backend} code={cfg['code']} capture={'on' if cfg['allowCapture'] else 'off'} "
+    who = cfg.get("username") or cfg["code"]
+    print(f"Khiam Agent — backend={backend} user={who} capture={'on' if cfg['allowCapture'] else 'off'} "
           f"(screenshots lib: {'متاح' if capture_available() else 'غير مثبّت'})")
 
+    creds = {"username": cfg["username"], "password": cfg["password"]} if cfg.get("username") else {"code": cfg["code"]}
     try:
-        res = http_json(f"{backend}/api/auth/login", "POST", {"code": cfg["code"]})
+        res = http_json(f"{backend}/api/auth/login", "POST", creds)
     except Exception as e:
-        print("فشل الاتصال بالـ backend:", e)
+        print("فشل الدخول (تأكد من اسم المستخدم/كلمة السر):", e)
         sys.exit(1)
     emp = res.get("employee")
     if not emp:
-        print("كود غير صحيح")
+        print("بيانات الدخول غير صحيحة")
         sys.exit(1)
     global TOKEN
     TOKEN = res.get("token") or ""

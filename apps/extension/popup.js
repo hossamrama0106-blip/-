@@ -14,21 +14,22 @@ async function refresh() {
   if (s.consentRequired) {
     show("consent");
   } else {
-    $("who").textContent = s.name || s.code;
-    $("whoSub").textContent = "الكود: " + s.code;
+    $("who").textContent = s.name || s.username || s.code;
+    $("whoSub").textContent = s.username ? "المستخدم: " + s.username : s.code ? "الكود: " + s.code : "";
     show("session");
   }
 }
 
 $("loginBtn").addEventListener("click", async () => {
-  const code = $("code").value.trim();
+  const username = $("username").value.trim();
+  const password = $("password").value;
   const whatsapp = $("whatsapp").value.trim();
   $("err").textContent = "";
-  if (!code) { $("err").textContent = "اكتب الكود"; return; }
+  if (!username || !password) { $("err").textContent = "اكتب اسم المستخدم وكلمة السر"; return; }
   $("loginBtn").textContent = "جارٍ الدخول…";
-  const r = await send("login", { code, whatsapp });
+  const r = await send("login", { username, password, whatsapp });
   $("loginBtn").textContent = "دخول";
-  if (!r.ok) { $("err").textContent = r.error === "كود غير صحيح" ? "كود غير صحيح" : (r.error || "فشل الدخول"); return; }
+  if (!r.ok) { $("err").textContent = r.error || "فشل الدخول"; return; }
   refresh();
 });
 

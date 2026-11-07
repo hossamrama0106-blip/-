@@ -137,8 +137,8 @@ export interface Snapshot {
 
 export const api = {
   health: () => http<{ ok: boolean }>("/health"),
-  login: (code: string, whatsapp?: string) =>
-    http("/auth/login", { method: "POST", body: JSON.stringify({ code, whatsapp }) }),
+  login: (username: string, password: string, whatsapp?: string) =>
+    http("/auth/login", { method: "POST", body: JSON.stringify({ username, password, whatsapp }) }),
   snapshot: () => http<Snapshot>("/snapshot"),
   leaderboard: () => http<Leaderboard>("/leaderboard"),
   counters: () => http<{ counters: CountersDaily[] }>("/counters"),

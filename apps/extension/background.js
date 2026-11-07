@@ -111,11 +111,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         case "session":
           return sendResponse({ ok: true, data: s });
         case "login": {
-          const r = await api("/api/auth/login", "POST", { code: msg.data.code, whatsapp: msg.data.whatsapp });
+          const r = await api("/api/auth/login", "POST", { username: msg.data.username, password: msg.data.password, whatsapp: msg.data.whatsapp });
+          if (!r || !r.token || !r.employee) return sendResponse({ ok: false, error: (r && r.error) || "فشل الدخول" });
           await setSession({
             employeeId: r.employee.id,
             name: r.employee.name,
             code: r.employee.code,
+            username: r.employee.username || r.employee.code,
             consentRequired: !!r.consentRequired,
             token: r.token,
           });

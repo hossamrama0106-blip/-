@@ -37,6 +37,7 @@ import {
 import { hub } from "./realtime";
 import { notifyNtfy, pushViolationToSheet } from "./integrations";
 import { broadcastCommand } from "./supabase";
+import { hashPassword, verifyPassword } from "./auth";
 
 interface Config {
   googleSheetWebhook: string;
@@ -121,6 +122,8 @@ class Store {
     queueStrict: process.env.QUEUE_STRICT !== "0",
   };
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
+  /** تجزئة كلمات السر: employeeId → hash (لا تُرسَل للواجهة أبدًا) */
+  creds = new Map<string, string>();
 
   constructor() {
     this.employees = seedEmployees();
@@ -165,12 +168,27 @@ class Store {
   findByCode(code: string) {
     return this.employees.find((e) => e.code.toUpperCase() === code.toUpperCase()) ?? null;
   }
+  findByUsername(username: string) {
+    const u = (username || "").trim().toLowerCase();
+    if (!u) return null;
+    return this.employees.find((e) => (e.username || e.code || "").toLowerCase() === u) ?? null;
+  }
+  /** ضبط كلمة سر موظف (تُخزَّن مجزّأة). */
+  setPassword(id: string, plain: string): void {
+    this.creds.set(id, hashPassword(plain));
+  }
+  /** تحقّق كلمة سر موظف. */
+  checkPassword(id: string, plain: string): boolean {
+    return verifyPassword(plain, this.creds.get(id));
+  }
 
   // ---------- employees ----------
-  addEmployee(input: { code: string; name: string; whatsapp: string; role?: string }): Employee {
+  addEmployee(input: { code?: string; username?: string; password?: string; name: string; whatsapp: string; role?: string }): Employee {
+    const username = (input.username || input.code || "").trim();
     const emp: Employee = {
       id: uid("emp"),
-      code: input.code,
+      code: input.code || username,
+      username: username || undefined,
       name: input.name,
       whatsapp: input.whatsapp,
       role: (input.role as Employee["role"]) ?? Role.EMPLOYEE,
@@ -181,9 +199,41 @@ class Store {
       createdAt: nowIso(),
     };
     this.employees.push(emp);
+    if (input.password) this.creds.set(emp.id, hashPassword(input.password));
     this.live.set(emp.id, freshLive(emp.id));
     hub.broadcast(RealtimeEvent.EMPLOYEE_UPSERT, emp);
     return emp;
+  }
+
+  /** تصفير النظام للإطلاق: مسح كل البيانات التشغيلية وبذر الحسابات الحقيقية. */
+  resetForLaunch(accounts: Array<{ username: string; password: string; name: string; role?: string; whatsapp?: string }>): Employee[] {
+    this.employees = [];
+    this.live = new Map();
+    this.shifts = [];
+    this.breaks = [];
+    this.activities = [];
+    this.counters = new Map();
+    this.reviews = [];
+    this.points = [];
+    this.violations = [];
+    this.notifications = [];
+    this.chat = [];
+    this.alerts = [];
+    this.timeline = [];
+    this.history = [];
+    this.queue = [];
+    this.metrics = [];
+    this.audit = [];
+    this.screenshots = [];
+    this.sessionEpoch = {};
+    this.creds = new Map();
+    this.nightMode = false;
+    this.inbox = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
+    const created: Employee[] = [];
+    for (const a of accounts) {
+      created.push(this.addEmployee({ username: a.username, password: a.password, name: a.name, whatsapp: a.whatsapp ?? "", role: a.role }));
+    }
+    return created;
   }
   updateEmployee(id: string, patch: Partial<Employee>): Employee | null {
     const emp = this.findEmployee(id);
@@ -1168,6 +1218,7 @@ class Store {
     return {
       v: 1,
       employees: this.employees,
+      creds: Object.fromEntries(this.creds),
       live: Object.fromEntries(this.live),
       shifts: this.shifts,
       breaks: this.breaks,
@@ -1195,6 +1246,7 @@ class Store {
   load(d: any): void {
     if (!d || typeof d !== "object") return;
     if (Array.isArray(d.employees)) this.employees = d.employees;
+    if (d.creds && typeof d.creds === "object") this.creds = new Map(Object.entries(d.creds) as [string, string][]);
     if (d.live && typeof d.live === "object") this.live = new Map(Object.entries(d.live) as [string, LiveStatus][]);
     if (Array.isArray(d.shifts)) this.shifts = d.shifts;
     if (Array.isArray(d.breaks)) this.breaks = d.breaks;
