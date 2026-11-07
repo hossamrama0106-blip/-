@@ -89,17 +89,19 @@ function FullDashboard() {
 }
 
 function AddEmployee({ onClose }: { onClose: () => void }) {
-  const [code, setCode] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
+  const [role, setRole] = useState("employee");
   const [busy, setBusy] = useState(false);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!code || !name) return;
+    if (!username || !password || !name) return;
     setBusy(true);
     try {
-      await api.addEmployee({ code, name, whatsapp });
+      await api.addEmployee({ username, password, name, whatsapp, role });
       onClose();
     } finally {
       setBusy(false);
@@ -110,9 +112,22 @@ function AddEmployee({ onClose }: { onClose: () => void }) {
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4" onClick={onClose}>
       <form onClick={(e) => e.stopPropagation()} onSubmit={submit} className="w-full max-w-sm bg-ink-850 border border-ink-700 rounded-2xl p-6 space-y-3">
         <div className="font-bold text-white text-lg">إضافة موظف</div>
-        <Field label="الكود" value={code} onChange={setCode} placeholder="K1013" />
+        <Field label="اسم المستخدم" value={username} onChange={setUsername} placeholder="username" dir="ltr" />
+        <Field label="كلمة السر" value={password} onChange={setPassword} placeholder="كلمة السر" dir="ltr" />
         <Field label="الاسم" value={name} onChange={setName} placeholder="اسم الموظف" />
         <Field label="واتساب" value={whatsapp} onChange={setWhatsapp} placeholder="+20…" dir="ltr" />
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">الدور</label>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full bg-ink-900 border border-ink-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-brand-400"
+          >
+            <option value="employee">موظف</option>
+            <option value="lead">قائد فريق</option>
+            <option value="admin">مدير</option>
+          </select>
+        </div>
         <div className="flex gap-2 pt-2">
           <button disabled={busy} className="flex-1 bg-brand-500 hover:bg-brand-400 text-white rounded-lg py-2 font-medium disabled:opacity-60">
             {busy ? "…" : "حفظ"}

@@ -143,7 +143,7 @@ export const api = {
   leaderboard: () => http<Leaderboard>("/leaderboard"),
   counters: () => http<{ counters: CountersDaily[] }>("/counters"),
 
-  addEmployee: (data: { code: string; name: string; whatsapp: string }) =>
+  addEmployee: (data: { username: string; password: string; name: string; whatsapp: string; role?: string }) =>
     http<Employee>("/employees", { method: "POST", body: JSON.stringify(data) }),
   updateEmployee: (id: string, patch: Partial<Employee>) =>
     http<Employee>(`/employees/${id}`, { method: "PATCH", body: JSON.stringify(patch) }),
