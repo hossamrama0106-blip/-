@@ -18,6 +18,7 @@ build/
 agent/.venv/
 agent/__pycache__/
 agent/config.json
+agent/.khiam_seen
 **/__pycache__/
 *.pyc
 

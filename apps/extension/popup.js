@@ -2,7 +2,7 @@ const send = (type, data) =>
   new Promise((resolve) => chrome.runtime.sendMessage({ type, data }, (r) => resolve(r || { ok: false })));
 
 const $ = (id) => document.getElementById(id);
-const views = { login: $("loginView"), consent: $("consentView"), session: $("sessionView") };
+const views = { login: $("loginView"), consent: $("consentView"), session: $("sessionView"), guide: $("guideView") };
 function show(name) {
   for (const k in views) views[k].classList.toggle("hide", k !== name);
 }
@@ -17,6 +17,7 @@ async function refresh() {
     $("who").textContent = s.name || s.username || s.code;
     $("whoSub").textContent = s.username ? "المستخدم: " + s.username : s.code ? "الكود: " + s.code : "";
     show("session");
+    chrome.storage.local.get("guideSeen", (r) => { if (!r.guideSeen) show("guide"); });
   }
 }
 
@@ -41,6 +42,12 @@ $("consentBtn").addEventListener("click", async () => {
 $("logoutBtn").addEventListener("click", async () => {
   await send("logout");
   refresh();
+});
+
+$("guideBtn").addEventListener("click", () => show("guide"));
+$("guideDone").addEventListener("click", () => {
+  chrome.storage.local.set({ guideSeen: 1 });
+  show("session");
 });
 
 refresh();

@@ -17,6 +17,10 @@
       .consent { font-size: 12px; line-height: 1.7; color: #cbd5e1; background: #111827; border: 1px solid #273243; border-radius: 8px; padding: 10px; }
       .hide { display: none; }
       .me { font-size: 14px; color: #fff; }
+      .guide { max-height: 300px; overflow-y: auto; margin-bottom: 10px; }
+      .gi { background: #111827; border: 1px solid #273243; border-radius: 8px; padding: 8px 10px; margin-bottom: 7px; font-size: 12px; }
+      .gi b { color: #fff; display: block; margin-bottom: 2px; }
+      .gi span { color: #cbd5e1; line-height: 1.6; }
     </style>
   </head>
   <body>
@@ -45,7 +49,21 @@
     <div id="sessionView" class="hide">
       <div class="me" id="who"></div>
       <div class="sub" id="whoSub"></div>
+      <button id="guideBtn" class="ghost">؟ دليل الاستخدام</button>
       <button class="ghost" id="logoutBtn">تسجيل الخروج</button>
+    </div>
+
+    <div id="guideView" class="hide">
+      <h1 style="font-size: 16px">دليل الاستخدام</h1>
+      <div class="guide">
+        <div class="gi"><b>▶️ ابدأ شيفتك</b><span>اضغط «بدء الشيفت» أول ما تبدأ شغل، و«إنهاء» آخر اليوم.</span></div>
+        <div class="gi"><b>☕ الاستراحات</b><span>سجّل بريك / صلاة / حمّام عشان وقتك يتحسب صح ومايتحسبش خمول.</span></div>
+        <div class="gi"><b>📋 مهمتك الحالية</b><span>لو في طابور، هتوصلك محادثة — ردّ واضغط «تم، التالي».</span></div>
+        <div class="gi"><b>⌨️ اشتغل عادي</b><span>حالتك بتتحدّث تلقائيًا (بتكتب / داخل محادثة)، وردودك بتتقيّم لتحسين الأداء.</span></div>
+        <div class="gi"><b>📢 نداء الإدارة</b><span>ممكن توصلك رسالة منطوقة من الإدارة أثناء العمل.</span></div>
+        <div class="gi"><b>🔒 شفافية</b><span>النظام معلن: يسجّل الرسائل والتعليقات والأوردرات وحالة العمل أثناء الشيفت.</span></div>
+      </div>
+      <button id="guideDone">تمام، فهمت</button>
     </div>
 
     <script src="popup.js"></script>

@@ -26,6 +26,7 @@ interface DashState {
   showKpi: boolean;
   showAudit: boolean;
   showReport: boolean;
+  showTour: boolean;
   role: string;
 
   login: (username: string, password: string) => Promise<void>;
@@ -40,6 +41,7 @@ interface DashState {
   setShowKpi: (v: boolean) => void;
   setShowAudit: (v: boolean) => void;
   setShowReport: (v: boolean) => void;
+  setShowTour: (v: boolean) => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
 }
@@ -69,6 +71,7 @@ export const useDash = create<DashState>((set, get) => ({
   showKpi: false,
   showAudit: false,
   showReport: false,
+  showTour: false,
 
   async login(username: string, password: string) {
     const res: any = await api.login(username, password);
@@ -76,6 +79,11 @@ export const useDash = create<DashState>((set, get) => ({
     set({ loggedIn: true, adminId: res.employee?.id ?? "admin", role: res.employee?.role ?? "admin" });
     await get().loadSnapshot();
     get().connect();
+    try {
+      if (!localStorage.getItem("khiam_onboard_v1")) set({ showTour: true });
+    } catch {
+      /* الوضع الخاص قد يمنع القراءة */
+    }
   },
 
   async loadSnapshot() {
@@ -175,6 +183,7 @@ export const useDash = create<DashState>((set, get) => ({
   setShowKpi: (v) => set({ showKpi: v }),
   setShowAudit: (v) => set({ showAudit: v }),
   setShowReport: (v) => set({ showReport: v }),
+  setShowTour: (v) => set({ showTour: v }),
   async setNight(v) {
     try {
       await api.setNightMode(v);

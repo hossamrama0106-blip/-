@@ -16,6 +16,7 @@ import Settings from "./components/Settings";
 import KpiPanel from "./components/KpiPanel";
 import AuditLog from "./components/AuditLog";
 import DailyReport from "./components/DailyReport";
+import OnboardingTour from "./components/OnboardingTour";
 
 export default function App() {
   const { loggedIn, liteMode } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode })));
@@ -30,6 +31,7 @@ export default function App() {
       <KpiPanel />
       <AuditLog />
       <DailyReport />
+      <OnboardingTour />
     </div>
   );
 }

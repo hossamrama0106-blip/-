@@ -201,8 +201,32 @@ def capture_webp(max_width, quality):
     return "data:image/webp;base64," + base64.b64encode(data).decode("ascii"), img.size[0], img.size[1]
 
 
+def print_intro():
+    """شاشة تعريف تظهر أول تشغيل فقط (علامة .khiam_seen بجوار السكربت)."""
+    marker = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".khiam_seen")
+    if os.path.exists(marker):
+        return
+    line = "=" * 56
+    print(line)
+    print("  Khiam Ops — برنامج متابعة الأداء (أول تشغيل)")
+    print(line)
+    print("  برنامج متابعة معلن بيشتغل مع إكستنشن المتصفح:")
+    print("   - يرصد النافذة النشطة ووقت الخمول وحالة العمل أثناء الشيفت.")
+    print("   - يصنّف النشاط (عمل / سوشيال / ألعاب / ترفيه).")
+    print("   - لو فعّلت الإدارة المراقبة الفائقة، يأخذ لقطات شاشة بموافقتك.")
+    print("   - كله معلن وشفاف — الهدف قياس الأداء وتحسينه.")
+    print("  الدخول باسم المستخدم وكلمة السر من الإدارة. سيبه شغّال طول الشيفت.")
+    print(line)
+    try:
+        with open(marker, "w", encoding="utf-8") as f:
+            f.write("seen")
+    except Exception:
+        pass
+
+
 def main():
     cfg = load_config()
+    print_intro()
     if not cfg.get("username") and not cfg["code"]:
         print("لازم دخول الموظف:  python khiam_agent.py --username mrsam511 --password ****")
         sys.exit(1)

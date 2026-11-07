@@ -3,7 +3,7 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, adminId, alerts, queue, role } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, adminId, alerts, queue, role } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     role: s.role,
@@ -18,6 +18,7 @@ export default function TopBar() {
     setShowKpi: s.setShowKpi,
     setShowAudit: s.setShowAudit,
     setShowReport: s.setShowReport,
+    setShowTour: s.setShowTour,
     alerts: s.alerts,
     queue: s.queue,
   })));
@@ -48,6 +49,13 @@ export default function TopBar() {
         </div>
       )}
 
+      <button
+        onClick={() => setShowTour(true)}
+        title="جولة تعريفية"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        ؟
+      </button>
       <button
         onClick={() => {
           const t = prompt("اكتب نص النداء الصوتي لكل الموظفين (هيُنطق عند الجميع):");
