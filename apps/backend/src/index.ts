@@ -5,6 +5,7 @@ import { app } from "./app";
 import { store } from "./store";
 import { startSimulator } from "./simulator";
 import { startPersistence } from "./persistence";
+import { commentsEnabled, fetchComments, commentsPollMs } from "./comments";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -26,6 +27,26 @@ async function main() {
   setInterval(() => store.purge(), 60000);
 
   startSimulator();
+
+  // بوت التعليقات: يفحص تعليقات الصفحة دوريًا (نائم بدون META_PAGE_ACCESS_TOKEN)
+  if (commentsEnabled()) {
+    const pollComments = async () => {
+      try {
+        const cs = await fetchComments();
+        if (cs.length) {
+          const r = store.ingestComments(cs);
+          if (r.added) console.log(`🤖 بوت التعليقات: رصد ${r.added} تعليق جديد (طابور ${r.enqueued})`);
+        }
+      } catch (e) {
+        console.warn("⚠️ بوت التعليقات:", (e as Error).message);
+      }
+    };
+    void pollComments();
+    setInterval(pollComments, commentsPollMs());
+    console.log("🤖 بوت التعليقات نشط (Meta Graph API)");
+  } else {
+    console.log("🤖 بوت التعليقات نائم (ضع META_PAGE_ACCESS_TOKEN لتفعيله)");
+  }
 
   serve({ fetch: app.fetch, port: PORT }, (info) => {
     console.log(`🚀 Khiam backend (local) on http://localhost:${info.port}`);

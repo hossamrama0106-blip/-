@@ -135,6 +135,24 @@ export interface Snapshot {
   metrics: KpiSnapshot;
 }
 
+export interface CommentRow {
+  id: string;
+  externalId: string;
+  text: string;
+  from: string;
+  link: string | null;
+  priority: string;
+  intent: string;
+  sentiment: string;
+  at: string;
+  enqueued: boolean;
+}
+export interface CommentsFeed {
+  enabled: boolean;
+  pollMs: number;
+  items: CommentRow[];
+}
+
 export const api = {
   health: () => http<{ ok: boolean }>("/health"),
   login: (username: string, password: string, whatsapp?: string) =>
@@ -169,6 +187,7 @@ export const api = {
     http<{ googleSheetWebhook: string; ntfyTopic: string; queueStrict: boolean }>("/settings", { method: "POST", body: JSON.stringify(body) }),
 
   metrics: () => http<KpiSnapshot>("/metrics"),
+  comments: () => http<CommentsFeed>("/comments"),
   reportDaily: (date?: string) => http<DailyReport>(`/report/daily${date ? `?date=${encodeURIComponent(date)}` : ""}`),
   // إرسال واتساب تلقائي عبر WAHA (نائم بدون WAHA_URL → يرجّع {dormant:true})
   wahaSend: (data: { employeeId: string; text: string; image?: string }) =>

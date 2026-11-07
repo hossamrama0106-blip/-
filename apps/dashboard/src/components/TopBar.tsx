@@ -3,7 +3,7 @@ import { useDash } from "../store";
 import { api } from "../api";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, adminId, alerts, queue, role, theme, setTheme } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, adminId, alerts, queue, role, theme, setTheme } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     role: s.role,
@@ -19,6 +19,7 @@ export default function TopBar() {
     setShowAudit: s.setShowAudit,
     setShowReport: s.setShowReport,
     setShowTour: s.setShowTour,
+    setShowComments: s.setShowComments,
     theme: s.theme,
     setTheme: s.setTheme,
     alerts: s.alerts,
@@ -51,6 +52,13 @@ export default function TopBar() {
         </div>
       )}
 
+      <button
+        onClick={() => setShowComments(true)}
+        title="بوت التعليقات"
+        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
+      >
+        🤖
+      </button>
       <button
         onClick={() => setShowTour(true)}
         title="جولة تعريفية"

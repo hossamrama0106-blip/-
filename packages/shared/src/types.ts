@@ -267,6 +267,20 @@ export interface RealtimeMessage<T = unknown> {
   payload: T;
 }
 
+/** تعليق مرصود من بوت التعليقات */
+export interface CommentItem {
+  id: ID;
+  externalId: string; // cmt_<metaId> — لمنع التكرار
+  text: string;
+  from: string; // اسم المعلّق إن وُجد
+  link: string | null; // رابط التعليق
+  priority: string; // أولوية مصنّفة: normal / high / vip
+  intent: string; // نية مكتشفة: نية شراء / استفسار / شكوى-غضب / تعليق
+  sentiment: string; // pos / neu / neg
+  at: ISODate; // وقت الرصد
+  enqueued: boolean; // دخل طابور ميتا؟
+}
+
 /** رد تسجيل الدخول */
 export interface LoginResult {
   token: string;

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { signToken, verifyToken } from "../src/auth";
-import { evaluateLocal } from "../src/ai";
+import { evaluateLocal, classifyComment } from "../src/ai";
 import { store } from "../src/store";
 
 // ---------- auth ----------
@@ -144,4 +144,27 @@ test("report: dailyReport يرجّع صفًّا لكل موظف + إجماليا
   // بنية جودة الردود موجودة
   assert.ok(typeof r.team.reviews.good === "number");
   assert.ok(typeof r.byChannel === "object");
+});
+
+// ---------- بوت التعليقات ----------
+test("comments: التصنيف يرفع أولوية نية الشراء والشكوى", () => {
+  assert.equal(classifyComment("عايز اشتري الجاكيت ده بكام؟").priority, "vip");
+  assert.equal(classifyComment("طلبي متأخر وفين فلوسي").priority, "high");
+  assert.equal(classifyComment("تمام شكرا").priority, "normal");
+});
+
+test("comments: ingest يضيف للطابور بقناة التعليقات ويمنع التكرار", () => {
+  store.queue.length = 0;
+  store.comments.length = 0;
+  const r1 = store.ingestComments([
+    { id: "c1", text: "عايز اشتري ده", from: "عميل" },
+    { id: "c2", text: "تعليق عادي" },
+  ]);
+  assert.equal(r1.added, 2);
+  const r2 = store.ingestComments([{ id: "c1", text: "عايز اشتري ده", from: "عميل" }]); // تكرار
+  assert.equal(r2.added, 0);
+  assert.equal(r2.skipped, 1);
+  const inQueue = store.queue.filter((t) => t.channel === "comments");
+  assert.equal(inQueue.length, 2);
+  assert.ok(inQueue.some((t) => t.priority === "vip")); // نية الشراء دخلت vip
 });

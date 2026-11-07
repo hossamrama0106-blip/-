@@ -79,6 +79,24 @@ export function evaluateLocal(input: EvalInput): EvalResult {
   return { verdict, score, notes: notes.join("، ") || "رد عادي", dealAtRisk, source: "local" };
 }
 
+// ---------- تصنيف تعليقات (بوت التعليقات) ----------
+const ANGER = ["وحش", "زفت", "نصب", "نصابين", "احتيال", "زعلان", "غاضب", "سيئ", "سيء", "تأخير", "متأخر", "فين طلبي", "مردّيتوش", "مردتوش", "مبترّدوش", "شكوى", "بلاغ", "زباله", "زبالة", "خيبة", "وحشين"];
+
+export interface CommentClass {
+  priority: "normal" | "high" | "vip";
+  intent: string;
+  sentiment: "pos" | "neu" | "neg";
+}
+
+/** تصنيف تعليق محليًّا (فوري، بلا تكلفة): أولوية + نية + مشاعر — لتغذية الطابور. */
+export function classifyComment(text: string): CommentClass {
+  const t = (text || "").trim();
+  if (BUYING.some((k) => t.includes(k))) return { priority: "vip", intent: "نية شراء", sentiment: "pos" };
+  if (ANGER.some((k) => t.includes(k))) return { priority: "high", intent: "شكوى/غضب", sentiment: "neg" };
+  if (QUESTION.some((k) => t.includes(k))) return { priority: "high", intent: "استفسار", sentiment: "neu" };
+  return { priority: "normal", intent: "تعليق", sentiment: "neu" };
+}
+
 // موجّه متعدد المزوّدين (AI Fallback Router): يجرّب المزوّدين المتاحين بالترتيب وينزل للتقييم المحلي.
 const SYS =
   'أنت مقيّم جودة خدمة عملاء لمتجر ملابس مصري. قيّم آخر رد من "الموظف". ' +

@@ -21,6 +21,7 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   session_revoke: { label: "خروج إجباري", cls: "bg-red-600/25 text-red-300" },
   waha_send: { label: "إرسال واتساب", cls: "bg-emerald-600/25 text-emerald-300" },
   system_reset: { label: "تصفير النظام", cls: "bg-red-600/25 text-red-300" },
+  comments_ingest: { label: "رصد تعليقات", cls: "bg-sky-600/25 text-sky-300" },
 };
 
 function fmtWhen(iso: string): string {

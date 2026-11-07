@@ -11,6 +11,7 @@ import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./valid
 import { supabaseEnabled, realtimeConfig } from "./supabase";
 import { r2Enabled, putDataUrl, signedGetUrl } from "./r2";
 import { wahaEnabled, sendText as wahaSendText, sendImage as wahaSendImage } from "./waha";
+import { commentsEnabled, commentsPollMs } from "./comments";
 
 export const app = new Hono();
 
@@ -100,6 +101,8 @@ app.use("/api/*", async (c, next) => {
     path === "/api/queue" ||
     (path === "/api/queue/enqueue" && m === "POST") ||
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
+    path === "/api/comments" ||
+    (path === "/api/comments/ingest" && m === "POST") ||
     (path === "/api/reviews" && !c.req.query("employeeId"));
   if (staffOnly && !isStaff) return c.json({ error: "forbidden" }, 403);
 
@@ -131,6 +134,7 @@ app.get("/api/health", (c) =>
     supabase: supabaseEnabled(),
     r2: r2Enabled(),
     waha: wahaEnabled(),
+    commentsBot: commentsEnabled(),
     clients: hub.count(),
     employees: store.employees.length,
     time: new Date().toISOString(),
@@ -401,6 +405,21 @@ app.post("/api/points", async (c) => {
 });
 
 // ---------- AI (تقييم الردود + الرادار الليلي) ----------
+// ---------- بوت التعليقات (رصد تعليقات الصفحة → تصنيف → طابور) ----------
+app.get("/api/comments", (c) => c.json({ enabled: commentsEnabled(), pollMs: commentsPollMs(), items: store.commentsRecent(80) }));
+app.post("/api/comments/ingest", async (c) => {
+  const raw = await c.req.json<{ comments?: any[] }>().catch(() => ({}) as any);
+  const items = Array.isArray(raw.comments)
+    ? raw.comments
+        .filter((x) => x && (x.id || x.externalId) && x.text)
+        .map((x) => ({ id: String(x.id || x.externalId), text: String(x.text), from: x.from ? String(x.from) : "", link: x.link ?? null, postId: x.postId ?? null }))
+    : [];
+  const r = store.ingestComments(items);
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "comments_ingest", details: `رصد ${r.added} تعليق (طابور ${r.enqueued})`, ip: clientIp(c) });
+  return c.json({ ok: true, ...r });
+});
+
 app.get("/api/ai/status", (c) => c.json({ mode: aiMode(), nightMode: store.nightMode }));
 app.post("/api/ai/evaluate", async (c) => {
   const data = await body<{ employeeId: string; conversationRef?: string; messages: { role: string; text: string }[]; evidenceUrl?: string }>(c, {

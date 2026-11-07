@@ -19,6 +19,7 @@ import {
   type AuditEntry,
   type BreakEntry,
   type ChatMessage,
+  type CommentItem,
   type CountersDaily,
   type Employee,
   type InboxSnapshot,
@@ -38,6 +39,7 @@ import { hub } from "./realtime";
 import { notifyNtfy, pushViolationToSheet } from "./integrations";
 import { broadcastCommand } from "./supabase";
 import { hashPassword, verifyPassword } from "./auth";
+import { classifyComment } from "./ai";
 
 interface Config {
   googleSheetWebhook: string;
@@ -124,6 +126,8 @@ class Store {
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
   /** تجزئة كلمات السر: employeeId → hash (لا تُرسَل للواجهة أبدًا) */
   creds = new Map<string, string>();
+  /** بوت التعليقات: التعليقات المرصودة حديثًا (في الذاكرة، مُحدَّدة بـ 300) */
+  comments: CommentItem[] = [];
 
   constructor() {
     this.employees = seedEmployees();
@@ -227,6 +231,7 @@ class Store {
     this.screenshots = [];
     this.sessionEpoch = {};
     this.creds = new Map();
+    this.comments = [];
     this.nightMode = false;
     this.inbox = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
     const created: Employee[] = [];
@@ -1077,6 +1082,58 @@ class Store {
       byChannel: this.queueByChannel(),
       rows,
     };
+  }
+
+  // ---------- بوت التعليقات (رصد → تصنيف → طابور) ----------
+  /** رصد تعليق واحد: تصنيف محلي → سجل → طابور ميتا (dedup عبر externalId). */
+  ingestComment(input: { id: string; text: string; from?: string; link?: string | null; postId?: string | null }): { added: boolean; item: CommentItem | null } {
+    const ext = "cmt_" + input.id;
+    if (this.comments.some((c) => c.externalId === ext)) return { added: false, item: null };
+    const cls = classifyComment(input.text);
+    const inQueue = this.queue.some((t) => t.externalId === ext && (t.status === QueueStatus.WAITING || t.status === QueueStatus.ASSIGNED));
+    const item: CommentItem = {
+      id: uid("cmt"),
+      externalId: ext,
+      text: (input.text || "").slice(0, 300),
+      from: input.from || "",
+      link: input.link ?? null,
+      priority: cls.priority,
+      intent: cls.intent,
+      sentiment: cls.sentiment,
+      at: nowIso(),
+      enqueued: false,
+    };
+    if (!inQueue) {
+      this.enqueueTask({ channel: Channel.COMMENTS, customerRef: input.from || ext, preview: input.text, link: input.link ?? null, priority: cls.priority, externalId: ext });
+      item.enqueued = true;
+    }
+    this.comments.unshift(item);
+    if (this.comments.length > 300) this.comments.length = 300;
+    return { added: true, item };
+  }
+
+  /** رصد دفعة تعليقات (من البولر أو مدخل ingest). */
+  ingestComments(items: Array<{ id: string; text: string; from?: string; link?: string | null; postId?: string | null }>): { added: number; skipped: number; enqueued: number } {
+    let added = 0;
+    let skipped = 0;
+    let enqueued = 0;
+    for (const it of items || []) {
+      if (!it || !it.id || !it.text) {
+        skipped++;
+        continue;
+      }
+      const r = this.ingestComment(it);
+      if (r.added) {
+        added++;
+        if (r.item?.enqueued) enqueued++;
+      } else skipped++;
+    }
+    return { added, skipped, enqueued };
+  }
+
+  /** أحدث التعليقات المرصودة (للداشبورد). */
+  commentsRecent(limit = 50): CommentItem[] {
+    return this.comments.slice(0, limit);
   }
 
   // ---------- سجل التدقيق (أثر أفعال الإدارة الحسّاسة — append-only) ----------
