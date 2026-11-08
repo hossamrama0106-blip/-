@@ -219,15 +219,29 @@ def capture_webp(max_width, quality):
 
 
 # ---------------- core login + monitor loop ----------------
-def do_login(backend, cfg):
+def do_login(backend, cfg, attempts=3, on_try=None):
+    """دخول مع إعادة محاولة ومهلة طويلة — يتحمّل إيقاظ الخادم النائم على Render (قد يأخذ ~دقيقة)."""
     global TOKEN
     creds = {"username": cfg["username"], "password": cfg["password"]} if cfg.get("username") else {"code": cfg["code"]}
-    res = http_json(f"{backend}/api/auth/login", "POST", creds)
-    emp = res.get("employee")
-    if not emp:
-        raise RuntimeError("بيانات الدخول غير صحيحة")
-    TOKEN = res.get("token") or ""
-    return emp
+    last = None
+    for i in range(attempts):
+        if on_try:
+            on_try(i + 1, attempts)
+        try:
+            res = http_json(f"{backend}/api/auth/login", "POST", creds, timeout=60)
+            emp = res.get("employee")
+            if not emp:
+                raise RuntimeError(res.get("error") or "بيانات الدخول غير صحيحة")
+            TOKEN = res.get("token") or ""
+            return emp
+        except Exception as e:
+            msg = str(e)
+            # خطأ مصادقة صريح = لا تعيد المحاولة
+            if "401" in msg or "403" in msg:
+                raise
+            last = e
+            time.sleep(3)
+    raise last or RuntimeError("تعذّر الاتصال بالخادم")
 
 
 def run_monitor(cfg, backend, eid, emit=None, stop_event=None):
@@ -363,7 +377,10 @@ def run_gui(cfg):
         e.insert(0, val)
         return e
 
-    e_backend = field(login, "رابط النظام", cfg.get("backend", DEFAULTS["backend"]))
+    _bk = cfg.get("backend") or DEFAULTS["backend"]
+    if "localhost" in _bk or "127.0.0.1" in _bk:
+        _bk = DEFAULTS["backend"]  # عميل موزّع — يتجاهل localhost ويستخدم رابط الإنتاج
+    e_backend = field(login, "رابط النظام", _bk)
     e_user = field(login, "اسم المستخدم", cfg.get("username", ""))
     e_pass = field(login, "كلمة السر", cfg.get("password", ""), show="●")
     cap_var = tk.IntVar(value=1 if cfg.get("allowCapture") else 0)
@@ -416,10 +433,13 @@ def run_gui(cfg):
                     status.pack(fill="both", expand=True, padx=24, pady=(4, 16))
                     build_status()
                     s_who.config(text=f"{d['name']}")
+                elif ev == "connecting":
+                    btn.config(text=f"جارٍ الاتصال… ({d['i']}/{d['n']})")
+                    err.config(text="قد يستغرق لحظات لإيقاظ الخادم…", fg="#94a3b8")
                 elif ev == "login_err":
                     prog.stop(); prog.pack_forget()
                     btn.config(state="normal", text="تثبيت وبدء المتابعة")
-                    err.config(text=d.get("msg", "فشل الدخول"))
+                    err.config(text=d.get("msg", "فشل الدخول"), fg="#f87171")
                 elif ev == "tick":
                     s_dot.config(fg="#22c55e" if d["ok"] else "#f97316")
                     s_state.config(text="متصل ويعمل" if d["ok"] else "تعذّر الاتصال")
@@ -437,9 +457,9 @@ def run_gui(cfg):
     def worker(cfg2):
         backend = cfg2["backend"].rstrip("/")
         try:
-            emp = do_login(backend, cfg2)
+            emp = do_login(backend, cfg2, on_try=lambda i, n: ui.put({"event": "connecting", "i": i, "n": n}))
         except Exception as e:
-            ui.put({"event": "login_err", "msg": "تأكد من الاسم/كلمة السر/الرابط: " + str(e)[:80]})
+            ui.put({"event": "login_err", "msg": "تعذّر الاتصال — تأكد من الرابط واسم المستخدم وكلمة السر: " + str(e)[:70]})
             return
         state["eid"] = emp["id"]
         ui.put({"event": "login_ok", "name": emp.get("name", "")})
