@@ -26,6 +26,7 @@ async function api(path, method = "GET", body) {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(60000), // مهلة تتحمّل إيقاظ الخادم النائم (Render) وما تعلّقش للأبد
   });
   if (!res.ok) {
     let err = {};

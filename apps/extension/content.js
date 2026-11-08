@@ -56,6 +56,7 @@
     scrapeRows: 0, // آخر عدد صفوف قُرئت (لصحة القارئ)
     scrapeAt: 0, // وقت آخر قراءة ناجحة
     names: {}, // id→اسم (لعرض أسماء الشات بدل الأرقام)
+    connErr: false, // الخادم مش راد (يظهر تحذير في الشريط)
   };
 
   const esc = (s) =>
@@ -131,14 +132,15 @@
         .bar { direction: rtl; display:flex; align-items:center; gap:10px; height:36px; padding:0 12px;
                background:#0f141c; color:#e5e7eb; border-bottom:1px solid #273243; font-size:13px;
                box-shadow:0 2px 8px rgba(0,0,0,.3); }
-        .brand { font-weight:800; color:#fff; letter-spacing:.3px; }
+        .brand { font-weight:800; color:#fff; letter-spacing:.3px; display:flex; align-items:center; gap:6px; }
+        .brand::before{ content:"";width:8px;height:8px;border-radius:50%;background:#6366f1;box-shadow:0 0 8px #6366f1; }
         .dot { width:9px;height:9px;border-radius:50%;display:inline-block; }
         .status { display:flex;align-items:center;gap:6px;color:#cbd5e1; }
         .spacer{ flex:1; }
         button { all:unset; cursor:pointer; padding:4px 10px;border-radius:7px;font-size:12px;font-weight:600;
                  background:#1b2432;color:#e5e7eb;border:1px solid #273243; transition:.15s; }
         button:hover{ background:#273243; }
-        button.primary{ background:#6366f1;border-color:#6366f1;color:#fff; }
+        button.primary{ background:linear-gradient(90deg,#6366f1,#7c3aed);border-color:#6366f1;color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35); }
         button.warn{ background:#b45309;border-color:#b45309;color:#fff; }
         button.danger{ background:#b91c1c;border-color:#b91c1c;color:#fff; }
         .rank{ background:#111827;border:1px solid #273243;border-radius:999px;padding:3px 9px;color:#fbbf24;font-weight:700; }
@@ -303,7 +305,8 @@
     const [label, color] = STATUS[st] || STATUS.offline;
     els.dot.style.background = color;
     const presence = (live && live.presence) || "not_started";
-    els.statusLabel.textContent = `${state.session.name} · ${label}`;
+    els.statusLabel.textContent = state.connErr ? `${state.session.name} · ⚠️ غير متصل بالخادم` : `${state.session.name} · ${label}`;
+    if (state.connErr) els.dot.style.background = "#f97316";
 
     // rank
     if (state.rank) { els.rank.style.display = "inline-block"; els.rank.textContent = `ترتيبك: #${state.rank}/${state.total}`; }
@@ -331,18 +334,17 @@
     els.controls.innerHTML = "";
     const add = (txt, cls, fn) => { const b = document.createElement("button"); b.textContent = txt; if (cls) b.className = cls; b.addEventListener("click", fn); els.controls.appendChild(b); };
     if (presence === "not_started" || presence === "shift_ended") {
-      add("ابدأ الشيفت", "primary", async () => { await send("shiftStart"); heartbeat(); });
+      add("ابدأ الشيفت", "primary", () => sendAction("shiftStart", undefined, "تعذّر بدء الشيفت"));
     } else if (presence === "working") {
       add("استراحة", "warn", () => openBreakMenu());
-      add("إنهاء الشيفت", "danger", async () => {
+      add("إنهاء الشيفت", "danger", () => {
         const notes = prompt("ملاحظات تسليم الوردية (اختياري):", "");
-        await send("shiftEnd", { notes });
-        heartbeat();
+        sendAction("shiftEnd", { notes }, "تعذّر إنهاء الشيفت");
       });
     } else {
       // break/prayer/wc
       const lbl = PRESENCE[presence] || "استراحة";
-      add(`إنهاء (${lbl})`, "primary", async () => { await send("breakEnd"); heartbeat(); });
+      add(`إنهاء (${lbl})`, "primary", () => sendAction("breakEnd", undefined, "تعذّر إنهاء الاستراحة"));
     }
   }
 
@@ -353,7 +355,7 @@
     types.forEach(([t, v]) => {
       const b = document.createElement("button");
       b.textContent = t;
-      b.addEventListener("click", async () => { await send("breakStart", { type: v }); heartbeat(); });
+      b.addEventListener("click", () => sendAction("breakStart", { type: v }, "تعذّر بدء الاستراحة"));
       menu.appendChild(b);
     });
     els.controls.innerHTML = "";
@@ -609,6 +611,17 @@
     });
   } catch (_) {}
 
+  // فعل مع تغذية راجعة واضحة لو فشل الاتصال (بدل الفشل الصامت)
+  async function sendAction(type, data, failMsg) {
+    const r = await send(type, data);
+    if (!r || !r.ok) {
+      toast("⚠️ " + failMsg, "تعذّر الاتصال بالخادم — اضبط رابط الخادم من أيقونة الإضافة (⚙ إعدادات الخادم) أو أعد تحميل الإضافة", true);
+      return false;
+    }
+    await heartbeat();
+    return true;
+  }
+
   async function heartbeat() {
     if (!state.session) return;
     const typing = Date.now() - state.lastTypeAt < 4000;
@@ -628,8 +641,12 @@
     const r = await send("presence", hb);
     state.mouseMoved = false;
     if (r.ok && r.data) {
+      state.connErr = false;
       applyLive(r.data);
       try { chrome.storage.local.set({ liveState: r.data }); } catch (_) {} // مزامنة كل التبويبات + حفظ لآخر refresh
+    } else {
+      state.connErr = true; // الخادم مش راد — أظهر تحذير
+      render();
     }
   }
   let mouseTimer = 0;
