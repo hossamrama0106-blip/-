@@ -48,9 +48,10 @@ async function main() {
     console.log("🤖 بوت التعليقات نائم (ضع META_PAGE_ACCESS_TOKEN لتفعيله)");
   }
 
-  serve({ fetch: app.fetch, port: PORT }, (info) => {
-    console.log(`🚀 Khiam backend (local) on http://localhost:${info.port}`);
-    console.log(`   health: http://localhost:${info.port}/api/health`);
+  // ربط 0.0.0.0 ضروري على منصّات السحابة (Render/Railway)؛ المنصّة تحقن PORT وقت التشغيل.
+  serve({ fetch: app.fetch, port: PORT, hostname: "0.0.0.0" }, (info) => {
+    console.log(`🚀 Khiam backend on 0.0.0.0:${info.port}`);
+    console.log(`   health: /api/health`);
   });
 }
 

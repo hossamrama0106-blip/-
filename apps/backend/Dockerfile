@@ -9,7 +9,8 @@ RUN corepack enable
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 COPY apps ./apps
-RUN pnpm install --frozen-lockfile
+# --prod=false يضمن devDeps (tsx للتشغيل + vite للبناء) حتى لو المنصّة ضبطت NODE_ENV=production وقت البناء
+RUN pnpm install --frozen-lockfile --prod=false
 
 # بناء الداشبورد الثابت ليقدّمه الباك من نفس الأصل
 RUN pnpm --filter @khiam/dashboard build

@@ -1,0 +1,41 @@
+# نشر Khiam Ops على Render (Blueprint) — خدمة ويب دائمة تعطيك رابط https مباشر.
+# الطريقة: Render ← New ← Blueprint ← اربط ريبو GitHub ← Render يقرأ هذا الملف ← تملا الأسرار ← Deploy.
+# الباك يقدّم الداشبورد من نفس الأصل؛ الداتا تعيش في Supabase فتصمد مع أي إعادة نشر.
+services:
+  - type: web
+    name: khiam-ops
+    runtime: docker
+    dockerfilePath: ./apps/backend/Dockerfile
+    dockerContext: .
+    # الباقة: starter (~7$/شهر) = دائم 24/7 بلا نوم. غيّرها إلى free لو تقبل نومًا بعد 15 دقيقة خمول
+    # (يصحى تلقائيًا على أول طلب ويحمّل الداتا من Supabase — مناسب لو الموظفون يشغّلونه بنبضاتهم وقت العمل).
+    plan: starter
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: AUTH_SECRET
+        generateValue: true # Render يولّد سرًّا قويًّا ثابتًا
+      - key: ADMIN_CODE
+        sync: false # تدخله إنت في لوحة Render (سري)
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GROQ_MODEL
+        value: openai/gpt-oss-120b
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        value: khiam-screenshots
+      # اختياري: TZ_OFFSET_MINUTES (افتراضي 120)، RATE_* (شوف .env.example)
+      # ملاحظة: لا تضع PORT — Render يحقنه تلقائيًا والباك يقرأه.
