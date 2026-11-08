@@ -1,6 +1,7 @@
 {
   "backend": "http://localhost:8787",
-  "code": "K1003",
+  "username": "mrsam511",
+  "password": "",
   "intervalSeconds": 10,
   "allowCapture": false,
   "captureIntervalSeconds": 3,

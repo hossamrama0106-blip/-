@@ -1,0 +1,33 @@
+# deps تُعاد تثبيتها داخل الصورة
+**/node_modules
+.pnpm-store
+
+# أسرار — لا تدخل الصورة أبدًا
+**/.env
+**/.env.*
+!**/.env.example
+
+# مخرجات تُعاد بناؤها
+**/dist
+**/build
+**/.output
+**/*.tsbuildinfo
+
+# بيانات محلية ولوجات
+**/.data
+local-data
+*.log
+
+# بايثون
+**/__pycache__
+**/*.pyc
+agent/.venv
+agent/.khiam_seen
+
+# git ومحرّرات وحزم الإصدار
+.git
+.gitignore
+.vscode
+.idea
+release
+*.zip

@@ -33,3 +33,7 @@ Thumbs.db
 local-data/
 screenshots-local/
 .data/
+
+# release packages (تُبنى بـ scripts/pack-employee.mjs)
+release/
+*.zip

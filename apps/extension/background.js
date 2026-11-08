@@ -1,12 +1,28 @@
 // Service worker — كل الاتصال بالـ backend يمرّ من هنا (عشان CSP بتاعة المواقع متمنعش fetch).
-// محلياً يتكلم مع http://localhost:8787 ؛ لاحقاً يتغيّر لعنوان Cloudflare Worker.
-const BACKEND = "http://localhost:8787";
+// رابط الخادم: من التخزين (يضبطه المدير من البوب) وإلا الافتراضي.
+// عدّل DEFAULT_BACKEND لرابط الإنتاج قبل التوزيع، أو اضبطه من البوب (⚙ إعدادات الخادم).
+const DEFAULT_BACKEND = "http://localhost:8787";
+let backendUrl = null;
+async function getBackend() {
+  if (backendUrl) return backendUrl;
+  try {
+    const { backendUrl: u } = await chrome.storage.local.get("backendUrl");
+    backendUrl = String(u || DEFAULT_BACKEND).replace(/\/+$/, "");
+  } catch (_) {
+    backendUrl = DEFAULT_BACKEND;
+  }
+  return backendUrl;
+}
+chrome.storage.onChanged.addListener((ch, area) => {
+  if (area === "local" && ch.backendUrl) backendUrl = null; // أُعيد ضبط الرابط من البوب
+});
 let authToken = "";
 
 async function api(path, method = "GET", body) {
   const headers = { "content-type": "application/json" };
   if (authToken) headers.authorization = "Bearer " + authToken;
-  const res = await fetch(BACKEND + path, {
+  const base = await getBackend();
+  const res = await fetch(base + path, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,

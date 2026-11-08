@@ -50,4 +50,16 @@ $("guideDone").addEventListener("click", () => {
   show("session");
 });
 
+// إعدادات الخادم (رابط الباك) — يضبطه المدير مرة على كل جهاز، أو يُبنى في DEFAULT_BACKEND
+(function backendSetup() {
+  const toggle = $("srvToggle"), box = $("srvBox"), inp = $("backendUrl"), btn = $("saveBackend"), msg = $("srvMsg");
+  if (!toggle) return;
+  chrome.storage.local.get("backendUrl", (r) => { if (r.backendUrl) inp.value = r.backendUrl; });
+  toggle.addEventListener("click", () => box.classList.toggle("hide"));
+  btn.addEventListener("click", () => {
+    const v = inp.value.trim().replace(/\/+$/, "");
+    chrome.storage.local.set({ backendUrl: v }, () => { msg.classList.remove("hide"); setTimeout(() => msg.classList.add("hide"), 1500); });
+  });
+})();
+
 refresh();

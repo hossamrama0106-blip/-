@@ -2,6 +2,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
+import { serveStatic } from "@hono/node-server/serve-static";
 import { ActivityType, Channel, NotificationType, QueuePriority, ReplyVerdict, Role, ViolationSeverity, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
@@ -16,10 +17,19 @@ import { commentsEnabled, commentsPollMs } from "./comments";
 
 export const app = new Hono();
 
+// مجلد الداشبورد المبنيّ (إنتاج) — الباك يقدّمه من نفس الأصل (single origin، بلا رفع منفصل ولا CORS).
+const DIST = process.env.DASHBOARD_DIST || "../dashboard/dist";
+
+// CORS: localhost للتطوير + أصول إنتاج من env (CORS_ORIGINS مفصولة بفواصل). الأصل الواحد ما يحتاجش CORS أصلًا.
+const EXTRA_ORIGINS = (process.env.CORS_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
 app.use(
   "*",
   cors({
-    origin: (o) => (o && /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o) ? o : ""),
+    origin: (o) => {
+      if (!o) return "";
+      if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o)) return o;
+      return EXTRA_ORIGINS.includes(o) ? o : "";
+    },
     allowHeaders: ["content-type", "authorization"],
   }),
 );
@@ -157,7 +167,12 @@ app.get("/api/health", (c) =>
 app.get("/api/realtime/config", (c) => c.json(realtimeConfig()));
 
 // ---------- test page (لمعاينة شريط الإكستنشن بدون ميتا) ----------
-app.get("/", (c) => c.html(`<!doctype html><meta charset=utf-8><body style="font-family:sans-serif;background:#0f141c;color:#e5e7eb;padding:40px"><h2>Khiam backend شغّال ✅</h2><p>الداشبورد: <a style=color:#818cf8 href="http://localhost:5173">localhost:5173</a> · صفحة تجربة الإكستنشن: <a style=color:#818cf8 href="/test">/test</a></p>`));
+// "/" → الداشبورد المبنيّ لو موجود، وإلا صفحة تطوير
+app.get(
+  "/",
+  serveStatic({ path: "index.html", root: DIST }),
+  (c) => c.html(`<!doctype html><meta charset=utf-8><body style="font-family:sans-serif;background:#0f141c;color:#e5e7eb;padding:40px"><h2>Khiam backend شغّال ✅</h2><p>الداشبورد (تطوير): <a style=color:#818cf8 href="http://localhost:5173">localhost:5173</a> · صفحة تجربة الإكستنشن: <a style=color:#818cf8 href="/test">/test</a><br><small>للإنتاج: ابنِ الداشبورد ثم شغّل الباك ليُقدَّم من هنا.</small></p>`),
+);
 app.get("/test", (c) =>
   c.html(`<!doctype html><html lang=ar dir=rtl><head><meta charset=utf-8><title>Meta Business Suite — الوارد (تجربة)</title>
   <style>body{font-family:Tahoma,sans-serif;background:#0b0f17;color:#e5e7eb;margin:0;padding:60px 24px}
@@ -792,3 +807,6 @@ app.get("/api/stream", (c) => {
     }
   });
 });
+
+// fallback: أي مسار غير /api وغير مُعالَج → ملفات الداشبورد المبنيّ (assets/favicon/…)
+app.get("*", (c, next) => (c.req.path.startsWith("/api") ? next() : serveStatic({ root: DIST })(c, next)));

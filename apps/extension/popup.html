@@ -36,6 +36,13 @@
       <input id="whatsapp" placeholder="+20…" dir="ltr" />
       <button id="loginBtn">دخول</button>
       <div class="err" id="err"></div>
+      <div id="srvToggle" style="font-size: 11px; color: #64748b; margin-top: 12px; cursor: pointer">⚙ إعدادات الخادم</div>
+      <div id="srvBox" class="hide">
+        <label>رابط الخادم</label>
+        <input id="backendUrl" placeholder="https://your-domain" dir="ltr" />
+        <button id="saveBackend" class="ghost">حفظ الرابط</button>
+        <div class="err ok hide" id="srvMsg">تم الحفظ ✓</div>
+      </div>
     </div>
 
     <div id="consentView" class="hide">
