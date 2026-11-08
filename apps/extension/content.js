@@ -30,6 +30,12 @@
     const t = (document.title + " " + location.href).toLowerCase();
     return t.includes("comment") || t.includes("تعليق") || t.includes("post");
   }
+  // هل هذه صفحة إنبوكس (نتوقّع منها قراءة محادثات)؟ — عشان ما نرفعش تنبيه فشل قراءة على صفحة مش إنبوكس
+  function isInboxPage() {
+    if (SITE === "whatsapp") return true;
+    if (SITE === "meta") return /inbox|messaging|messages/i.test(location.href);
+    return false;
+  }
 
   // ---------- state ----------
   const state = {
@@ -47,6 +53,8 @@
     queueWaiting: 0,
     queueStrict: true,
     taskOpen: false,
+    scrapeRows: 0, // آخر عدد صفوف قُرئت (لصحة القارئ)
+    scrapeAt: 0, // وقت آخر قراءة ناجحة
   };
 
   const esc = (s) =>
@@ -500,7 +508,7 @@
   async function heartbeat() {
     if (!state.session) return;
     const typing = Date.now() - state.lastTypeAt < 4000;
-    const r = await send("presence", {
+    const hb = {
       typing,
       typingWpm: currentWpm(),
       currentWindow: document.title || SITE,
@@ -508,7 +516,12 @@
       clientTime: Date.now(),
       mouseMoved: state.mouseMoved === true,
       extensionConnected: true,
-    });
+    };
+    // صحة قارئ الإنبوكس → الباك يرفع تنبيه لو القراءة وقفت أثناء الشيفت (ما يتظلمش الموظف لو ميتا غيّرت صفحتها)
+    if ((SITE === "meta" || SITE === "whatsapp") && isInboxPage()) {
+      hb.scraperOk = state.scrapeRows > 0 && Date.now() - state.scrapeAt < 90000;
+    }
+    const r = await send("presence", hb);
     state.mouseMoved = false;
     if (r.ok && r.data) {
       state.live = r.data;
@@ -651,6 +664,8 @@
   function handleFiberInbox(data) {
     if (!state.session) return;
     lastFiberAt = Date.now();
+    state.scrapeRows = data.rowCount || (Array.isArray(data.items) ? data.items.length : 0) || 0;
+    state.scrapeAt = Date.now(); // قراءة ناجحة (صحة القارئ)
     const items = Array.isArray(data.items) ? data.items : [];
     const unreadItems = items.filter((it) => it.unread); // للطابور: غير المقروء فقط (الجديد/غير المجاب عليه)
     const comments = isComments() ? unreadItems.length : 0;
@@ -675,6 +690,8 @@
     if (Date.now() - lastFiberAt < 30000) return; // الـ fiber هو المصدر الأساسي
     const d = scrapeMetaInbox();
     if (!d.ok) return; // لم نتعرّف على بنية الصفحة — نتخطّى بأمان
+    state.scrapeRows = d.rowCount || d.items.length || 0;
+    state.scrapeAt = Date.now(); // قراءة DOM ناجحة (صحة القارئ)
     const unreadItems = d.items.filter((it) => it.unread);
     const comments = isComments() ? unreadItems.length : 0;
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
@@ -737,6 +754,8 @@
     if (!state.session || (SITE !== "whatsapp")) return;
     const d = scrapeForSite();
     if (!d.ok) return; // لم نتعرّف على البنية — تخطٍّ آمن (لا نلوّث الطابور)
+    state.scrapeRows = d.items.length || 0;
+    state.scrapeAt = Date.now(); // قراءة واتساب ناجحة (صحة القارئ)
     const unreadItems = d.items.filter((it) => it.unread);
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: 0 });
     if (unreadItems.length) send("queueSync", { items: unreadItems });

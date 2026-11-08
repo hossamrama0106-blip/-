@@ -92,17 +92,3 @@ export async function broadcastCommand(employeeId: string, cmd: string): Promise
     return false;
   }
 }
-
-/** فحص اتصال سريع عند الإقلاع — يرجّع true لو الجدول موجود والمفتاح صالح. */
-export async function pingSupabase(): Promise<boolean> {
-  if (!supabaseEnabled()) return false;
-  try {
-    const res = await fetch(`${URL_BASE}/rest/v1/${SNAPSHOT_TABLE}?id=eq.1&select=id`, {
-      headers: headers(),
-      signal: withTimeout(),
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}

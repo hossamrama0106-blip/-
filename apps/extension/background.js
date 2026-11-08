@@ -19,6 +19,28 @@ async function api(path, method = "GET", body) {
   return res.json();
 }
 
+// ---- Outbox: يخزّن أحداث النشاط الفاشلة (نت مقطوع) ويعيد إرسالها عند عودة الاتصال — ما يضيعش العدّ ----
+const OUTBOX_KEY = "khiam_outbox";
+async function outboxAdd(item) {
+  try {
+    const { [OUTBOX_KEY]: box = [] } = await chrome.storage.local.get(OUTBOX_KEY);
+    box.push(item);
+    while (box.length > 200) box.shift(); // حد أقصى يمنع التضخّم
+    await chrome.storage.local.set({ [OUTBOX_KEY]: box });
+  } catch (_) {}
+}
+async function outboxFlush() {
+  let box;
+  try { ({ [OUTBOX_KEY]: box = [] } = await chrome.storage.local.get(OUTBOX_KEY)); } catch (_) { return; }
+  if (!box || !box.length) return;
+  const keep = [];
+  for (const it of box) {
+    if (Date.now() - it.ts > 6 * 60 * 60 * 1000) continue; // أقدم من 6 ساعات → أسقطه
+    try { await api(it.path, "POST", it.body); } catch (_) { keep.push(it); } // لسه مقطوع → احتفظ به
+  }
+  try { await chrome.storage.local.set({ [OUTBOX_KEY]: keep }); } catch (_) {}
+}
+
 async function getSession() {
   const { session } = await chrome.storage.local.get("session");
   return session || null;
@@ -142,6 +164,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true });
         case "presence": {
           const data = await api("/api/presence", "POST", { employeeId: reqId(), ...msg.data });
+          void outboxFlush(); // النبضة نجحت = النت رجع → ابعت النشاط المتراكم
           // اتأكد إن قناة الأوامر اللحظية مفتوحة (تعيد الاتصال لو الـ service worker اتعاد تشغيله)
           if (rtConfig === null) await fetchRealtimeConfig();
           connectRealtime(s.employeeId);
@@ -149,8 +172,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           if (data && Array.isArray(data.commands)) for (const cmd of data.commands) void runCommand(cmd);
           return sendResponse({ ok: true, data });
         }
-        case "activity":
-          return sendResponse({ ok: true, data: await api("/api/activity", "POST", { employeeId: reqId(), ...msg.data }) });
+        case "activity": {
+          const actPayload = { employeeId: reqId(), ...msg.data };
+          try {
+            return sendResponse({ ok: true, data: await api("/api/activity", "POST", actPayload) });
+          } catch (_) {
+            await outboxAdd({ path: "/api/activity", body: actPayload, ts: Date.now() }); // نت مقطوع → خزّن وأعد لاحقًا (ما يضيعش الرد)
+            return sendResponse({ ok: true, queued: true });
+          }
+        }
         case "shiftStart":
           return sendResponse({ ok: true, data: await api("/api/shift/start", "POST", { employeeId: reqId() }) });
         case "shiftEnd":

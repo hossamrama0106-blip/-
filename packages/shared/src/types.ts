@@ -52,6 +52,9 @@ export interface LiveStatus {
   agentConnected: boolean;
   lastExtAt: Millis; // آخر نبضة من الإكستنشن (لكشف قطعه أثناء الشيفت)
   lastAgentAt: Millis; // آخر نبضة من البرنامج (ويندوز)
+  scraperReporting: boolean; // الموظف على صفحة إنبوكس والإكستنشن بيبلّغ صحة القراءة
+  lastScrapeOkAt: Millis; // آخر قراءة إنبوكس ناجحة
+  scrapeFailSince: Millis; // بداية فشل القراءة المستمر (0 = لا فشل)
   liveWatching: boolean; // الإدارة بتتفرج لايف دلوقتي
   spotlight: boolean; // عين الرقابة العلنية مفعّلة
   superMonitor: boolean; // مراقبة فائقة مستمرة (كوضع ليلي خاص بالموظف)
@@ -97,7 +100,6 @@ export interface CountersDaily {
   tasksDone: number; // محادثات أُنجزت من طابور ميتا (عدّاد دائم لا يتأثر بتنظيف الطابور)
   avgGapMs: number | null; // متوسط الفجوة بين الردود
   typingWpm: number | null; // متوسط سرعة الكتابة
-  activeMs: number; // زمن العمل الفعلي
 }
 
 /** تقييم رد بالـ AI */
@@ -167,7 +169,7 @@ export interface ChatMessage {
 export interface Alert {
   id: ID;
   employeeId: ID | null;
-  kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "ext_offline" | "custom";
+  kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "ext_offline" | "scrape_fail" | "custom";
   severity: ViolationSeverity;
   message: string;
   at: ISODate;

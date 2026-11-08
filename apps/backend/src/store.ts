@@ -69,7 +69,12 @@ function describeActivity(l: LiveStatus): string {
 
 const uid = (p: string) => `${p}_${Math.random().toString(36).slice(2, 10)}`;
 const nowIso = () => new Date().toISOString();
-const today = () => new Date().toISOString().slice(0, 10);
+// توقيت العمل الموحّد (افتراضي القاهرة UTC+2) — كل حدود "اليوم" تُحسب به بدل UTC عشان الأرقام تطابق يوم العمل الفعلي
+const TZ_OFFSET_MIN = Number(process.env.TZ_OFFSET_MINUTES ?? 120);
+const localDate = (ms: number): string => new Date(ms + TZ_OFFSET_MIN * 60000).toISOString().slice(0, 10);
+const today = () => localDate(Date.now());
+/** بداية اليوم المحلي (توقيت العمل) كـ epoch ms */
+const dayStartMs = (): number => new Date(today() + "T00:00:00.000Z").getTime() - TZ_OFFSET_MIN * 60000;
 
 function freshLive(employeeId: string): LiveStatus {
   return {
@@ -91,6 +96,9 @@ function freshLive(employeeId: string): LiveStatus {
     agentConnected: false,
     lastExtAt: 0,
     lastAgentAt: 0,
+    scraperReporting: false,
+    lastScrapeOkAt: 0,
+    scrapeFailSince: 0,
     liveWatching: false,
     spotlight: false,
     superMonitor: false,
@@ -140,6 +148,10 @@ class Store {
   private counterKey(employeeId: string, date = today()) {
     return `${employeeId}:${date}`;
   }
+  /** تاريخ اليوم بتوقيت العمل الموحّد (للعرض والاتّساق مع العدّادات) */
+  today(): string {
+    return today();
+  }
   getCounters(employeeId: string, date = today()): CountersDaily {
     const key = this.counterKey(employeeId, date);
     let c = this.counters.get(key);
@@ -154,7 +166,6 @@ class Store {
         tasksDone: 0,
         avgGapMs: null,
         typingWpm: null,
-        activeMs: 0,
       };
       this.counters.set(key, c);
     }
@@ -267,7 +278,7 @@ class Store {
   // ---------- presence / heartbeat ----------
   heartbeat(
     employeeId: string,
-    patch: Partial<LiveStatus> & { mouseMoved?: boolean; clientTime?: number },
+    patch: Partial<LiveStatus> & { mouseMoved?: boolean; clientTime?: number; scraperOk?: boolean },
   ): LiveStatus {
     const l = this.getLive(employeeId);
     const now = Date.now();
@@ -280,6 +291,21 @@ class Store {
     if (patch.agentConnected !== undefined) {
       l.agentConnected = patch.agentConnected;
       if (patch.agentConnected) l.lastAgentAt = now; // نبضة برنامج حيّة
+    }
+    // صحة قارئ الإنبوكس (تجيء من الإكستنشن فقط) — نتتبّع فشل القراءة المستمر لتنبيه "راجع قبل الحكم".
+    // نبضة البرنامج (agent) لا تحمل scraperOk ولا extensionConnected، فلا تمسّ حالة القارئ.
+    if (patch.scraperOk !== undefined) {
+      l.scraperReporting = true;
+      if (patch.scraperOk) {
+        l.lastScrapeOkAt = now;
+        l.scrapeFailSince = 0;
+      } else if (l.scrapeFailSince === 0) {
+        l.scrapeFailSince = now;
+      }
+    } else if (patch.extensionConnected === true) {
+      // نبضة إكستنشن لكن مش على صفحة إنبوكس → لا تنبيه قراءة
+      l.scraperReporting = false;
+      l.scrapeFailSince = 0;
     }
     if (patch.typing !== undefined) l.typing = patch.typing;
     if (patch.typingWpm !== undefined) l.typingWpm = patch.typingWpm;
@@ -364,6 +390,7 @@ class Store {
     s.handoverNotes = handoverNotes;
     const l = this.getLive(employeeId);
     l.presence = PresenceState.SHIFT_ENDED;
+    l.lastReplyAt = null; // تصفير سلسلة فجوات الرد مع نهاية الشيفت
     this.releaseEmployeeTasks(employeeId); // رجّع محادثاته للطابور
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "end", session: s });
     this.announceTeam(employeeId, "أنهى الشيفت");
@@ -386,6 +413,7 @@ class Store {
         : type === BreakType.WC
           ? PresenceState.WC
           : PresenceState.BREAK;
+    l.lastReplyAt = null; // لا نحتسب وقت البريك كفجوة رد (عدالة avgGap)
     this.releaseEmployeeTasks(employeeId); // رجّع محادثته للطابور أثناء البريك
     hub.broadcast(RealtimeEvent.SHIFT_EVENT, { kind: "break_start", break: b });
     this.announceTeam(employeeId, type === BreakType.PRAYER ? "في استراحة صلاة" : type === BreakType.WC ? "في الحمام" : "في بريك");
@@ -886,9 +914,8 @@ class Store {
       t.doneAt = nowIso();
       t.handleMs = t.assignedAt ? Date.now() - new Date(t.assignedAt).getTime() : null;
       done = t;
-      this.getCounters(employeeId).tasksDone += 1; // عدّاد دائم لا يتأثر بتنظيف الطابور
-      // الإنهاء يُحتسب ردًّا (يدخل عدّادات الأداء — مقياس عادل لا يُتلاعب به)
-      this.addActivity({ employeeId, type: ActivityType.REPLY, channel: t.channel, ref: t.customerRef });
+      this.getCounters(employeeId).tasksDone += 1; // عدّاد إنجاز الطابور (دائم، منفصل عن msgs)
+      // لا نحتسب الإنهاء كرسالة — msgs تُعدّ من ضغط Enter الفعلي فقط (يمنع تكرار العدّ ونفخ الأرقام بزر "تم")
     }
     const next = this.config.queueStrict ? this.assignNext(employeeId) : null;
     this.bumpQueue();
@@ -941,10 +968,9 @@ class Store {
     const waiting = this.queue.filter((t) => t.status === QueueStatus.WAITING).sort((a, b) => this.sortWaiting(a, b));
     const assigned = this.queue.filter((t) => t.status === QueueStatus.ASSIGNED);
     // المنجَز اليوم من العدّاد الدائم (لا يتأثر بتنظيف مصفوفة الطابور عند تجاوز الحد)
-    const dayStart = new Date();
-    dayStart.setHours(0, 0, 0, 0);
-    // المتوسطات من المهام المنتهية المتبقية في الذاكرة (نافذة متحرّكة لآخر المهام)
-    const recentDone = this.queue.filter((t) => t.status === QueueStatus.DONE && t.doneAt && new Date(t.doneAt).getTime() >= dayStart.getTime());
+    const dayStart = dayStartMs(); // بداية اليوم بتوقيت العمل الموحّد
+    // المتوسطات من المهام المنتهية اليوم
+    const recentDone = this.queue.filter((t) => t.status === QueueStatus.DONE && t.doneAt && new Date(t.doneAt).getTime() >= dayStart);
     const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
     const now = Date.now();
     const perEmployee = this.employees.map((e) => ({
@@ -1040,7 +1066,7 @@ class Store {
 
   /** تقرير أداء يومي شامل (أدمِن) — تجميع لكل موظف + إجماليات الفريق، قابل للتصدير */
   dailyReport(date = today()) {
-    const inDay = (iso: string | null | undefined) => typeof iso === "string" && iso.slice(0, 10) === date;
+    const inDay = (iso: string | null | undefined) => typeof iso === "string" && localDate(new Date(iso).getTime()) === date;
     const rows = this.employees.map((e) => {
       const c = this.getCounters(e.id, date);
       const l = this.getLive(e.id);
@@ -1205,6 +1231,10 @@ class Store {
       if (l.presence === PresenceState.WORKING && extWas && !extFresh && l.lastExtAt > 0) {
         this.raiseAlert({ employeeId: e.id, kind: "ext_offline", severity: ViolationSeverity.HIGH, message: `${e.name}: الإكستنشن اتقطع أثناء الشيفت — قراءة ميتا والطابور متوقفين` });
       }
+      // تنبيه فشل سحب الإنبوكس: الموظف على صفحة إنبوكس والقراءة متوقفة من فترة — غالبًا ميتا غيّرت الصفحة، مش تقصير الموظف
+      if (l.presence === PresenceState.WORKING && l.scraperReporting && l.scrapeFailSince > 0 && now - l.scrapeFailSince > Thresholds.SCRAPE_FAIL_MS) {
+        this.raiseAlert({ employeeId: e.id, kind: "scrape_fail", severity: ViolationSeverity.MEDIUM, message: `${e.name}: قراءة ميتا/واتساب متوقفة منذ ~${Math.round((now - l.scrapeFailSince) / 60000)}د — راجع قبل الحكم (قد تكون الصفحة اتغيّرت)` });
+      }
 
       const age = now - l.lastHeartbeatAt;
       // بدأ شيفت وما وصلتش ولا نبضة (ابدأ شيفت من البوب ثم اقفل الإكستنشن/البرنامج)
@@ -1299,7 +1329,7 @@ class Store {
     this.alerts = this.alerts.filter((a) => !a.resolvedAt || now - new Date(a.resolvedAt).getTime() < 60 * 60 * 1000);
     cap(this.alerts, 300);
     // عدّادات: احتفظ بآخر 3 أيام فقط
-    const keep = new Set([0, 1, 2].map((d) => new Date(now - d * 86400000).toISOString().slice(0, 10)));
+    const keep = new Set([0, 1, 2].map((d) => localDate(now - d * 86400000)));
     for (const key of [...this.counters.keys()]) {
       if (!keep.has(key.split(":")[1])) this.counters.delete(key);
     }

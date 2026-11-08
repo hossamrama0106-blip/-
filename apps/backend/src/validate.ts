@@ -50,18 +50,6 @@ export function num(opts: { int?: boolean; min?: number; max?: number; optional?
   };
 }
 
-/** قيمة بوليانية صريحة */
-export function bool(opts: { optional?: boolean } = {}): Rule {
-  return (v, field) => {
-    if (!present(v)) {
-      if (opts.optional) return undefined;
-      throw new ValidationError(`${field}: مطلوب`);
-    }
-    if (typeof v !== "boolean") throw new ValidationError(`${field}: يجب أن يكون true/false`);
-    return v;
-  };
-}
-
 /** قيمة من مجموعة مسموحة (enum) */
 export function oneOf(values: readonly string[], opts: { optional?: boolean } = {}): Rule {
   return (v, field) => {

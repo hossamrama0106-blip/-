@@ -52,7 +52,11 @@ function enqueueCustomer() {
 }
 
 export function startSimulator(): void {
-  if (process.env.SIMULATE === "0") return;
+  if (process.env.SIMULATE !== "1") return; // المحاكي يعمل فقط بتفعيل صريح SIMULATE=1 (يمنع تشغيله بالغلط)
+  if (process.env.NODE_ENV === "production") {
+    console.warn("⚠️ SIMULATE=1 مُتجاهَل في الإنتاج — حماية بيانات الموظفين الحقيقيين من التلويث");
+    return;
+  }
 
   // بذرة أولية لطابور ميتا (محادثات منتظرة)
   for (let i = 0; i < 8; i++) enqueueCustomer();

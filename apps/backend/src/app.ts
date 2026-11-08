@@ -397,7 +397,7 @@ app.post("/api/activity", async (c) => {
 });
 app.get("/api/counters", (c) => {
   const date = c.req.query("date") ?? undefined;
-  return c.json({ date: date ?? new Date().toISOString().slice(0, 10), counters: store.allCounters(date) });
+  return c.json({ date: date ?? store.today(), counters: store.allCounters(date) });
 });
 app.get("/api/leaderboard", (c) => {
   const date = c.req.query("date") ?? undefined;

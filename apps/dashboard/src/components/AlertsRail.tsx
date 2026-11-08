@@ -11,6 +11,7 @@ const KIND_LABEL: Record<string, string> = {
   fake_activity: "نشاط وهمي",
   deal_at_risk: "أوردر في خطر",
   ext_offline: "الإكستنشن مقطوع أثناء الشيفت",
+  scrape_fail: "قراءة الإنبوكس متوقفة",
   custom: "تنبيه",
 };
 

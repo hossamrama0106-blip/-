@@ -29,6 +29,3 @@ export function seedEmployees(): Employee[] {
     createdAt: now,
   }));
 }
-
-/** حساب مبدئي بسيط للإدارة في وضع التطوير */
-export const DEV_ADMIN_CODE = "ADMIN";
