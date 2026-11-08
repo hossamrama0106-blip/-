@@ -69,24 +69,44 @@ export function save(): void {
   }
 }
 
+/** حفظ ينتظر دفعة Supabase — للخروج النظيف (Render spin-down) حتى لا تضيع آخر حالة (الشيفت مثلًا). */
+export async function saveAsync(): Promise<void> {
+  let obj: Record<string, unknown>;
+  let json: string;
+  try {
+    obj = store.serialize();
+    json = JSON.stringify(obj);
+  } catch {
+    return;
+  }
+  if (json !== lastJson) {
+    try {
+      mkdirSync(dirname(FILE), { recursive: true });
+      writeFileSync(TMP, json, "utf8");
+      renameSync(TMP, FILE);
+      lastJson = json;
+    } catch { /* ignore */ }
+  }
+  if (supabaseEnabled() && json !== lastPushed) {
+    try {
+      if (await pushSnapshot(obj)) lastPushed = json;
+    } catch { /* ignore */ }
+  }
+}
+
 /** ابدأ الثبات: تحميل عند الإقلاع (ينتظر Supabase) + حفظ دوري + حفظ عند الخروج. */
 export async function startPersistence(intervalMs = Number(process.env.SAVE_INTERVAL_MS) || 8000): Promise<void> {
   await hydrate();
   setInterval(save, intervalMs);
-  const flush = () => {
+  // عند الإيقاف (Render spin-down): انتظر حفظ Supabase قبل الخروج حتى لا تضيع آخر حالة.
+  const flush = async () => {
     try {
-      save();
+      await saveAsync();
     } catch {
       /* ignore */
     }
   };
-  process.on("SIGINT", () => {
-    flush();
-    process.exit(0);
-  });
-  process.on("SIGTERM", () => {
-    flush();
-    process.exit(0);
-  });
-  process.on("beforeExit", flush);
+  process.on("SIGINT", () => void flush().finally(() => process.exit(0)));
+  process.on("SIGTERM", () => void flush().finally(() => process.exit(0)));
+  process.on("beforeExit", () => void saveAsync());
 }

@@ -587,6 +587,28 @@
     state.keystrokes = state.keystrokes.filter((t) => t > cut);
     return Math.round(state.keystrokes.length / 5);
   }
+  // تطبيق الحالة اللحظية (من نبضة هذا التبويب أو من تبويب آخر عبر التخزين) — يوحّد الشريط
+  function applyLive(data) {
+    if (!data) return;
+    state.live = data;
+    state.peak = data.peak;
+    const prevTaskId = state.task && state.task.id;
+    state.task = data.task || null;
+    state.queueWaiting = data.queueWaiting || 0;
+    if (data.queueStrict !== undefined) state.queueStrict = data.queueStrict;
+    if (state.task && state.task.id !== prevTaskId) {
+      toast("📋 مهمة جديدة", `${state.task.customerRef}${state.task.preview ? " — " + state.task.preview : ""}`, true);
+    }
+    render();
+    highlightAssigned();
+  }
+  // مزامنة فورية عبر كل التبويبات (ابدأ الشيفت في تبويب → يظهر في الكل)
+  try {
+    chrome.storage.onChanged.addListener((ch, area) => {
+      if (area === "local" && ch.liveState && ch.liveState.newValue && state.session) applyLive(ch.liveState.newValue);
+    });
+  } catch (_) {}
+
   async function heartbeat() {
     if (!state.session) return;
     const typing = Date.now() - state.lastTypeAt < 4000;
@@ -606,18 +628,8 @@
     const r = await send("presence", hb);
     state.mouseMoved = false;
     if (r.ok && r.data) {
-      state.live = r.data;
-      state.peak = r.data.peak;
-      // طابور ميتا: المهمة الحالية تأتي مع كل heartbeat (إسناد تلقائي في الوضع الإجباري)
-      const prevTaskId = state.task && state.task.id;
-      state.task = r.data.task || null;
-      state.queueWaiting = r.data.queueWaiting || 0;
-      if (r.data.queueStrict !== undefined) state.queueStrict = r.data.queueStrict;
-      if (state.task && state.task.id !== prevTaskId) {
-        toast("📋 مهمة جديدة", `${state.task.customerRef}${state.task.preview ? " — " + state.task.preview : ""}`, true);
-      }
-      render();
-      highlightAssigned();
+      applyLive(r.data);
+      try { chrome.storage.local.set({ liveState: r.data }); } catch (_) {} // مزامنة كل التبويبات + حفظ لآخر refresh
     }
   }
   let mouseTimer = 0;
@@ -960,7 +972,11 @@
   }
 
   mountBar();
-  loadSession().then(() => { heartbeat(); pollNotifications(); refreshRank(); });
+  loadSession().then(() => {
+    // استعد آخر حالة محفوظة فورًا — يمنع وميض "ابدأ الشيفت" على refresh/تبويب جديد قبل أول نبضة (مهم على Render البارد)
+    try { chrome.storage.local.get("liveState", (o) => { if (o && o.liveState && state.session) applyLive(o.liveState); }); } catch (_) {}
+    heartbeat(); pollNotifications(); refreshRank();
+  });
   setTimeout(showOnboarding, 1500); // عرض تقديمي أول مرة
 
   // loops
