@@ -4,73 +4,90 @@
     <meta charset="UTF-8" />
     <style>
       * { box-sizing: border-box; font-family: "Segoe UI", Tahoma, sans-serif; }
-      body { width: 300px; margin: 0; background: #0f141c; color: #e5e7eb; padding: 16px; }
-      h1 { font-size: 18px; margin: 0 0 2px; color: #fff; }
-      .sub { font-size: 12px; color: #94a3b8; margin-bottom: 14px; }
-      label { font-size: 12px; color: #cbd5e1; display: block; margin: 10px 0 4px; }
-      input { width: 100%; background: #1b2432; border: 1px solid #273243; border-radius: 8px; padding: 9px 10px; color: #fff; font-size: 14px; outline: none; }
-      input:focus { border-color: #6366f1; }
-      button { width: 100%; margin-top: 14px; background: #6366f1; color: #fff; border: 0; border-radius: 8px; padding: 10px; font-weight: 700; font-size: 14px; cursor: pointer; }
-      button.ghost { background: #1b2432; border: 1px solid #273243; }
-      .err { color: #f87171; font-size: 12px; margin-top: 8px; min-height: 16px; }
-      .ok { color: #34d399; }
-      .consent { font-size: 12px; line-height: 1.7; color: #cbd5e1; background: #111827; border: 1px solid #273243; border-radius: 8px; padding: 10px; }
+      body { width: 320px; margin: 0; background: radial-gradient(120% 120% at 50% 0%, #141b2b 0%, #0b0f17 60%); color: #e5e7eb; }
+      .top { padding: 20px 18px 16px; text-align: center; background: linear-gradient(180deg, rgba(99,102,241,.18), transparent); border-bottom: 1px solid #1e2636; }
+      .logo { width: 48px; height: 48px; margin: 0 auto 8px; border-radius: 14px; background: linear-gradient(135deg, #6366f1, #7c3aed); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 22px; box-shadow: 0 6px 18px rgba(99,102,241,.4); }
+      h1 { font-size: 18px; margin: 0; color: #fff; letter-spacing: .3px; }
+      .sub { font-size: 11px; color: #8b93a7; margin-top: 2px; }
+      .body { padding: 16px 18px 20px; }
+      label { font-size: 11px; color: #9aa3b8; display: block; margin: 12px 0 5px; font-weight: 600; }
+      input { width: 100%; background: #141c29; border: 1px solid #27313f; border-radius: 10px; padding: 11px 12px; color: #fff; font-size: 14px; outline: none; transition: .15s; }
+      input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,.18); }
+      button { width: 100%; margin-top: 16px; background: linear-gradient(90deg, #6366f1, #7c3aed); color: #fff; border: 0; border-radius: 10px; padding: 12px; font-weight: 700; font-size: 14px; cursor: pointer; transition: .15s; box-shadow: 0 6px 16px rgba(99,102,241,.3); }
+      button:hover { filter: brightness(1.08); }
+      button.ghost { background: #141c29; border: 1px solid #27313f; box-shadow: none; color: #cbd5e1; }
+      button.ghost:hover { background: #1b2432; }
+      .err { color: #f87171; font-size: 12px; margin-top: 10px; min-height: 16px; text-align: center; }
+      .err.ok { color: #34d399; }
+      .consent { font-size: 12px; line-height: 1.8; color: #cbd5e1; background: #111826; border: 1px solid #27313f; border-radius: 12px; padding: 12px; }
       .hide { display: none; }
-      .me { font-size: 14px; color: #fff; }
-      .guide { max-height: 300px; overflow-y: auto; margin-bottom: 10px; }
-      .gi { background: #111827; border: 1px solid #273243; border-radius: 8px; padding: 8px 10px; margin-bottom: 7px; font-size: 12px; }
+      .card { background: #111826; border: 1px solid #27313f; border-radius: 12px; padding: 14px; text-align: center; }
+      .avatar { width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 8px; background: linear-gradient(135deg, #6366f1, #7c3aed); display: grid; place-items: center; color: #fff; font-weight: 800; font-size: 18px; }
+      .me { font-size: 16px; color: #fff; font-weight: 700; }
+      .srv { font-size: 11px; color: #5b6475; margin-top: 14px; cursor: pointer; text-align: center; user-select: none; }
+      .srv:hover { color: #9aa3b8; }
+      .guide { max-height: 320px; overflow-y: auto; margin-bottom: 10px; }
+      .gi { background: #111826; border: 1px solid #27313f; border-radius: 10px; padding: 9px 11px; margin-bottom: 7px; font-size: 12px; }
       .gi b { color: #fff; display: block; margin-bottom: 2px; }
-      .gi span { color: #cbd5e1; line-height: 1.6; }
+      .gi span { color: #9aa3b8; line-height: 1.6; }
     </style>
   </head>
   <body>
-    <h1>Khiam Ops</h1>
-    <div class="sub">تسجيل دخول الموظف</div>
-
-    <div id="loginView">
-      <label>اسم المستخدم</label>
-      <input id="username" placeholder="اسم المستخدم" dir="ltr" autofocus />
-      <label>كلمة السر</label>
-      <input id="password" type="password" placeholder="كلمة السر" dir="ltr" />
-      <label>رقم الواتساب (اختياري)</label>
-      <input id="whatsapp" placeholder="+20…" dir="ltr" />
-      <button id="loginBtn">دخول</button>
-      <div class="err" id="err"></div>
-      <div id="srvToggle" style="font-size: 11px; color: #64748b; margin-top: 12px; cursor: pointer">⚙ إعدادات الخادم</div>
-      <div id="srvBox" class="hide">
-        <label>رابط الخادم</label>
-        <input id="backendUrl" placeholder="https://your-domain" dir="ltr" />
-        <button id="saveBackend" class="ghost">حفظ الرابط</button>
-        <div class="err ok hide" id="srvMsg">تم الحفظ ✓</div>
-      </div>
+    <div class="top">
+      <div class="logo">K</div>
+      <h1>Khiam Ops</h1>
+      <div class="sub">متابعة أداء — معلن وشفّاف</div>
     </div>
 
-    <div id="consentView" class="hide">
-      <div class="consent" id="consentText">
-        هذا الجهاز مزوّد بنظام متابعة أداء يسجّل الرسائل والتعليقات والأوردرات وحالة العمل أثناء الشيفت،
-        وقد تُلتقط لقطات شاشة أو بث مباشر للرقابة. بالموافقة تُقِرّ باطّلاعك.
+    <div class="body">
+      <div id="loginView">
+        <label>اسم المستخدم</label>
+        <input id="username" placeholder="اسم المستخدم" dir="ltr" autofocus />
+        <label>كلمة السر</label>
+        <input id="password" type="password" placeholder="••••••••" dir="ltr" />
+        <label>رقم الواتساب (اختياري)</label>
+        <input id="whatsapp" placeholder="+20…" dir="ltr" />
+        <button id="loginBtn">تسجيل الدخول</button>
+        <div class="err" id="err"></div>
+        <div id="srvToggle" class="srv">⚙ إعدادات الخادم</div>
+        <div id="srvBox" class="hide">
+          <label>رابط الخادم</label>
+          <input id="backendUrl" placeholder="https://your-domain" dir="ltr" />
+          <button id="saveBackend" class="ghost">حفظ الرابط</button>
+          <div class="err ok hide" id="srvMsg">تم الحفظ ✓</div>
+        </div>
       </div>
-      <button id="consentBtn">موافق، ابدأ العمل</button>
-    </div>
 
-    <div id="sessionView" class="hide">
-      <div class="me" id="who"></div>
-      <div class="sub" id="whoSub"></div>
-      <button id="guideBtn" class="ghost">؟ دليل الاستخدام</button>
-      <button class="ghost" id="logoutBtn">تسجيل الخروج</button>
-    </div>
-
-    <div id="guideView" class="hide">
-      <h1 style="font-size: 16px">دليل الاستخدام</h1>
-      <div class="guide">
-        <div class="gi"><b>▶️ ابدأ شيفتك</b><span>اضغط «بدء الشيفت» أول ما تبدأ شغل، و«إنهاء» آخر اليوم.</span></div>
-        <div class="gi"><b>☕ الاستراحات</b><span>سجّل بريك / صلاة / حمّام عشان وقتك يتحسب صح ومايتحسبش خمول.</span></div>
-        <div class="gi"><b>📋 مهمتك الحالية</b><span>لو في طابور، هتوصلك محادثة — ردّ واضغط «تم، التالي».</span></div>
-        <div class="gi"><b>⌨️ اشتغل عادي</b><span>حالتك بتتحدّث تلقائيًا (بتكتب / داخل محادثة)، وردودك بتتقيّم لتحسين الأداء.</span></div>
-        <div class="gi"><b>📢 نداء الإدارة</b><span>ممكن توصلك رسالة منطوقة من الإدارة أثناء العمل.</span></div>
-        <div class="gi"><b>🔒 شفافية</b><span>النظام معلن: يسجّل الرسائل والتعليقات والأوردرات وحالة العمل أثناء الشيفت.</span></div>
+      <div id="consentView" class="hide">
+        <div class="consent" id="consentText">
+          هذا الجهاز مزوّد بنظام متابعة أداء يسجّل الرسائل والتعليقات والأوردرات وحالة العمل أثناء الشيفت،
+          وقد تُلتقط لقطات شاشة أو بث مباشر للرقابة. بالموافقة تُقِرّ باطّلاعك.
+        </div>
+        <button id="consentBtn">موافق، ابدأ العمل</button>
       </div>
-      <button id="guideDone">تمام، فهمت</button>
+
+      <div id="sessionView" class="hide">
+        <div class="card">
+          <div class="avatar" id="avatarCh">؟</div>
+          <div class="me" id="who"></div>
+          <div class="sub" id="whoSub"></div>
+        </div>
+        <button id="guideBtn" class="ghost">؟ دليل الاستخدام</button>
+        <button class="ghost" id="logoutBtn">تسجيل الخروج</button>
+      </div>
+
+      <div id="guideView" class="hide">
+        <h1 style="font-size: 15px; margin-bottom: 10px">دليل الاستخدام</h1>
+        <div class="guide">
+          <div class="gi"><b>▶️ ابدأ شيفتك</b><span>اضغط «بدء الشيفت» أول ما تبدأ شغل، و«إنهاء» آخر اليوم.</span></div>
+          <div class="gi"><b>☕ الاستراحات</b><span>سجّل بريك / صلاة / حمّام عشان وقتك يتحسب صح.</span></div>
+          <div class="gi"><b>📋 مهمتك الحالية</b><span>لو في محادثة مُسنَدة، ردّ واضغط «تم، التالي».</span></div>
+          <div class="gi"><b>⌨️ اشتغل عادي</b><span>حالتك بتتحدّث تلقائيًا، وردودك بتتقيّم لتحسين الأداء.</span></div>
+          <div class="gi"><b>📢 نداء الإدارة</b><span>ممكن توصلك رسالة منطوقة من الإدارة أثناء العمل.</span></div>
+          <div class="gi"><b>🔒 شفافية</b><span>النظام معلن: يسجّل عملك أثناء الشيفت فقط.</span></div>
+        </div>
+        <button id="guideDone">تمام، فهمت</button>
+      </div>
     </div>
 
     <script src="popup.js"></script>

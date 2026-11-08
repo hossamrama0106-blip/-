@@ -14,7 +14,9 @@ async function refresh() {
   if (s.consentRequired) {
     show("consent");
   } else {
-    $("who").textContent = s.name || s.username || s.code;
+    const nm = s.name || s.username || s.code || "؟";
+    $("who").textContent = nm;
+    const av = $("avatarCh"); if (av) av.textContent = nm.charAt(0);
     $("whoSub").textContent = s.username ? "المستخدم: " + s.username : s.code ? "الكود: " + s.code : "";
     show("session");
     chrome.storage.local.get("guideSeen", (r) => { if (!r.guideSeen) show("guide"); });

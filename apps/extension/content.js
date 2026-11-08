@@ -129,17 +129,17 @@
       <style>
         :host { all: initial; }
         * { box-sizing: border-box; font-family: "Segoe UI", Tahoma, sans-serif; }
-        .bar { direction: rtl; display:flex; align-items:center; gap:10px; height:36px; padding:0 12px;
-               background:#0f141c; color:#e5e7eb; border-bottom:1px solid #273243; font-size:13px;
-               box-shadow:0 2px 8px rgba(0,0,0,.3); }
+        .bar { direction: rtl; display:flex; align-items:center; gap:8px; height:36px; padding:0 12px;
+               background:linear-gradient(90deg,rgba(13,18,27,.94),rgba(19,26,40,.94)); backdrop-filter:blur(8px);
+               color:#e5e7eb; border-bottom:1px solid #27313f; font-size:13px; box-shadow:0 2px 12px rgba(0,0,0,.35); }
         .brand { font-weight:800; color:#fff; letter-spacing:.3px; display:flex; align-items:center; gap:6px; }
         .brand::before{ content:"";width:8px;height:8px;border-radius:50%;background:#6366f1;box-shadow:0 0 8px #6366f1; }
         .dot { width:9px;height:9px;border-radius:50%;display:inline-block; }
-        .status { display:flex;align-items:center;gap:6px;color:#cbd5e1; }
+        .status { display:flex;align-items:center;gap:6px;color:#cbd5e1;background:#111826;border:1px solid #27313f;padding:3px 10px;border-radius:999px; }
         .spacer{ flex:1; }
-        button { all:unset; cursor:pointer; padding:4px 10px;border-radius:7px;font-size:12px;font-weight:600;
-                 background:#1b2432;color:#e5e7eb;border:1px solid #273243; transition:.15s; }
-        button:hover{ background:#273243; }
+        button { all:unset; cursor:pointer; padding:5px 11px;border-radius:8px;font-size:12px;font-weight:600;
+                 background:#1b2432;color:#e5e7eb;border:1px solid #2b3545; transition:.15s; }
+        button:hover{ background:#273243; border-color:#3a455a; }
         button.primary{ background:linear-gradient(90deg,#6366f1,#7c3aed);border-color:#6366f1;color:#fff;box-shadow:0 2px 8px rgba(99,102,241,.35); }
         button.warn{ background:#b45309;border-color:#b45309;color:#fff; }
         button.danger{ background:#b91c1c;border-color:#b91c1c;color:#fff; }
