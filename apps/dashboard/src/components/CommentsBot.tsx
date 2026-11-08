@@ -57,6 +57,12 @@ export default function CommentsBot() {
           {feed ? <span>كل {Math.round((feed.pollMs || 0) / 1000)} ثانية</span> : null}
         </div>
 
+        <div className="text-[12px] text-slate-300 bg-ink-900 border border-ink-800 rounded-lg p-3 mb-3 leading-6">
+          🤖 <b className="text-white">إيه ده؟</b> البوت يرصد <b>تعليقات صفحتك</b> على فيسبوك/إنستجرام، يصنّفها تلقائيًا
+          (<span className="text-red-300">نية شراء = عاجل</span> · <span className="text-amber-300">شكوى = مهم</span> · استفسار)،
+          ويحوّلها لـ<b>محادثات معيّنة</b> يرد عليها الفريق بالأولوية. لتفعيل الفحص التلقائي: ضع <b>توكن صفحة ميتا</b> في متغيّرات البيئة (META_PAGE_ACCESS_TOKEN).
+        </div>
+
         <div className="overflow-y-auto -mx-1 px-1">
           {busy && !feed && <div className="text-center text-slate-400 py-10 text-sm">جارٍ التحميل…</div>}
           {err && <div className="text-center text-red-400 py-10 text-sm">{err}</div>}

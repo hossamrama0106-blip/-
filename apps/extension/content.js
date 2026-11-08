@@ -55,6 +55,7 @@
     taskOpen: false,
     scrapeRows: 0, // آخر عدد صفوف قُرئت (لصحة القارئ)
     scrapeAt: 0, // وقت آخر قراءة ناجحة
+    names: {}, // id→اسم (لعرض أسماء الشات بدل الأرقام)
   };
 
   const esc = (s) =>
@@ -64,6 +65,9 @@
     const s = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
     const m = Math.floor(s / 60);
     return m ? `${m}د ${s % 60}ث` : `${s}ث`;
+  }
+  function fmtTime(iso) {
+    try { return new Date(iso).toTimeString().slice(0, 5); } catch (_) { return ""; }
   }
   const CH_LABEL = { messenger: "ماسنجر", instagram: "انستجرام", whatsapp: "واتساب", comments: "تعليقات", operix: "أوبريكس" };
 
@@ -424,13 +428,25 @@
     const r = await send("chatList");
     if (!r.ok || !els) return;
     els.msgs.innerHTML = "";
-    (r.data || []).slice(-50).forEach((m) => {
+    const list = r.data || [];
+    if (!list.length) {
+      const e = document.createElement("div");
+      e.style.cssText = "color:#64748b;font-size:12px;text-align:center;padding:16px";
+      e.textContent = "ابدأ المحادثة مع فريقك…";
+      els.msgs.appendChild(e);
+    }
+    list.slice(-60).forEach((m) => {
       const d = document.createElement("div");
       const mine = state.session && m.from === state.session.employeeId;
       d.className = "m" + (mine ? " me" : "");
-      d.innerHTML = `<div class="who"></div><div class="bd"></div>`;
-      d.querySelector(".who").textContent = mine ? "أنا" : m.from;
-      d.querySelector(".bd").textContent = m.body;
+      const who = document.createElement("div");
+      who.className = "who";
+      who.textContent = (mine ? "أنا" : state.names[m.from] || m.from) + (m.at ? " · " + fmtTime(m.at) : "");
+      const bd = document.createElement("div");
+      bd.className = "bd";
+      bd.textContent = m.body;
+      d.appendChild(who);
+      d.appendChild(bd);
       els.msgs.appendChild(d);
     });
     els.msgs.scrollTop = els.msgs.scrollHeight;
@@ -632,6 +648,7 @@
     const r = await send("leaderboard");
     if (!r.ok || !r.data) return;
     const rows = [...r.data.rows].sort((a, b) => (b.points * 10 + b.msgs + b.orders * 3) - (a.points * 10 + a.msgs + a.orders * 3));
+    for (const row of r.data.rows) state.names[row.employeeId] = row.name; // خريطة أسماء للشات
     const idx = rows.findIndex((x) => x.employeeId === state.session.employeeId);
     state.rank = idx >= 0 ? idx + 1 : null;
     state.total = rows.length;
