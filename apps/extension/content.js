@@ -246,18 +246,21 @@
       consentOk: root.getElementById("consentOk"),
     };
     els.chatBtn.addEventListener("click", toggleChat);
-    els.minBtn.addEventListener("click", () => {
+    function collapseBar() {
       host.style.display = "none";
+      try { chrome.storage.local.set({ barMin: 1 }); } catch (_) {}
       let r = document.getElementById("khiam-restore");
       if (!r) {
         r = document.createElement("div");
         r.id = "khiam-restore";
         r.textContent = "Khiam ▸";
         r.style.cssText = "position:fixed;top:8px;right:8px;z-index:2147483647;background:#6366f1;color:#fff;font:600 12px sans-serif;padding:5px 11px;border-radius:999px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)";
-        r.addEventListener("click", () => { host.style.display = ""; r.remove(); });
+        r.addEventListener("click", () => { host.style.display = ""; r.remove(); try { chrome.storage.local.remove("barMin"); } catch (_) {} });
         (document.documentElement || document.body).appendChild(r);
       } else r.style.display = "";
-    });
+    }
+    els.minBtn.addEventListener("click", collapseBar);
+    try { chrome.storage.local.get("barMin", (o) => { if (o && o.barMin) collapseBar(); }); } catch (_) {} // يتذكّر اختيار التصغير
     els.chatSend.addEventListener("click", sendChat);
     els.chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); sendChat(); } });
     els.taskChip.addEventListener("click", () => { if (!state.task && state.queueWaiting > 0) pullNext(); else toggleTaskPanel(); });
@@ -389,6 +392,26 @@
       setTimeout(() => d.remove(), 20000);
     }
     els.toasts.appendChild(d);
+  }
+  // عرض تقديمي يظهر مرة واحدة أول تثبيت/تشغيل (يشرح الشريط)
+  function showOnboarding() {
+    try {
+      chrome.storage.local.get("barGuideSeen", (o) => {
+        if ((o && o.barGuideSeen) || !els) return;
+        const d = document.createElement("div");
+        d.className = "toast big";
+        d.innerHTML = `<div class="t"></div><div class="b"></div>`;
+        d.querySelector(".t").textContent = "👋 أهلاً — شريط Khiam Ops";
+        const b = d.querySelector(".b");
+        b.style.whiteSpace = "pre-line";
+        b.textContent = "• ابدأ شيفتك من الشريط فوق\n• مهمتك الحالية بزر «تم، التالي»\n• سجّل الاستراحة (صلاة/حمام/بريك)\n• 💬 شات الفريق · 🎙️ نداء الإدارة\n• «—» لتصغير الشريط";
+        const ok = document.createElement("button");
+        ok.className = "primary"; ok.textContent = "تمام، فهمت"; ok.style.marginTop = "10px";
+        ok.addEventListener("click", () => { d.remove(); try { chrome.storage.local.set({ barGuideSeen: 1 }); } catch (_) {} });
+        d.appendChild(ok);
+        els.toasts.appendChild(d);
+      });
+    } catch (_) {}
   }
 
   // ---------- chat ----------
@@ -529,7 +552,7 @@
       if (e.key === "Enter" && !e.shiftKey && isEditable(e.target)) {
         const replyText = editableText(e.target); // نلتقط نص الرد قبل ما يُرسَل ويُمسَح
         const now = Date.now();
-        if (now - state.lastActivityAt < 1500) return; // debounce
+        if (now - state.lastActivityAt < 2500) return; // debounce (يمنع عدّ الرد/التعليق مرتين)
         state.lastActivityAt = now;
         const comment = isComments();
         beep(comment ? 560 : 680, 0.07, 0.05);
@@ -921,6 +944,7 @@
 
   mountBar();
   loadSession().then(() => { heartbeat(); pollNotifications(); refreshRank(); });
+  setTimeout(showOnboarding, 1500); // عرض تقديمي أول مرة
 
   // loops
   setInterval(heartbeat, 10000);

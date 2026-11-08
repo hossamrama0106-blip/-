@@ -172,6 +172,7 @@ export interface Alert {
   kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "ext_offline" | "scrape_fail" | "custom";
   severity: ViolationSeverity;
   message: string;
+  link?: string | null; // رابط المحادثة/التعليق المرتبط (يظهر كزر في التنبيه)
   at: ISODate;
   resolvedAt: ISODate | null;
 }

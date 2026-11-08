@@ -17,23 +17,26 @@ function sinceMs(iso: string | null): number | null {
 }
 
 export default function QueueBoard() {
-  const { queue, employees, live, select } = useDash(useShallow((s) => ({
+  const { queue, employees, live, select, adminId } = useDash(useShallow((s) => ({
     queue: s.queue,
     employees: s.employees,
     live: s.live,
     select: s.select,
+    adminId: s.adminId,
   })));
   const [busy, setBusy] = useState(false);
   const [assignTo, setAssignTo] = useState("");
+  // نموذج التعيين اليدوي
+  const [cref, setCref] = useState("");
+  const [clink, setClink] = useState("");
+  const [cto, setCto] = useState("all");
 
-  const workers = useMemo(
-    () => employees.filter((e) => live[e.id]?.presence === "working"),
-    [employees, live],
-  );
+  // الموظفون الخاضعون للمراقبة فقط (استبعاد الإدارة)
+  const staff = useMemo(() => employees.filter((e) => e.role === "employee"), [employees]);
+  const workers = useMemo(() => staff.filter((e) => live[e.id]?.presence === "working"), [staff, live]);
 
   if (!queue) return null;
 
-  // الموظفون الظاهرون: من يعمل أو عنده مهمة أو أنجز اليوم
   const roster = queue.perEmployee
     .filter((p) => live[p.employeeId]?.presence === "working" || p.current || p.doneToday > 0)
     .sort((a, b) => (b.current ? 1 : 0) - (a.current ? 1 : 0) || b.doneToday - a.doneToday);
@@ -45,15 +48,19 @@ export default function QueueBoard() {
     try { await fn(); } catch (e) { console.error(e); } finally { setBusy(false); }
   };
 
-  const enqueueTest = () =>
-    run(() =>
-      api.enqueueTask({
-        customerRef: `عميل #${100 + Math.floor(Math.random() * 900)}`,
-        channel: ["messenger", "instagram", "whatsapp", "comments"][Math.floor(Math.random() * 4)],
-        preview: "محادثة تجريبية من لوحة الإدارة",
-        priority: Math.random() < 0.2 ? "high" : "normal",
-      }),
-    );
+  // تعيين محادثة محدّدة لموظف أو للكل (إشعار + تلوين في ميتا عبر الإكستنشن)
+  const assignNew = () =>
+    run(async () => {
+      const ref = cref.trim();
+      if (!ref) return;
+      const task = await api.enqueueTask({ customerRef: ref, channel: "messenger", preview: clink ? "محادثة محتاجة رد" : "محادثة محتاجة رد عاجل", priority: "high", link: clink.trim() || undefined });
+      if (cto === "all") {
+        await api.sendNotification({ type: "message", from: adminId ?? "admin", to: "all", body: `📌 محادثة محتاجة رد: ${ref}${clink ? "\n" + clink : ""}` });
+      } else if (cto) {
+        await api.assignTask(task.id, cto); // يُسنِد + يبعت إشعارًا للموظف
+      }
+      setCref(""); setClink("");
+    });
 
   const toggleStrict = () => run(() => api.setSettings({ queueStrict: !queue.strict }));
   const assign = (t: QueueTask) => target && run(() => api.assignTask(t.id, target));
@@ -64,22 +71,32 @@ export default function QueueBoard() {
     <div className="bg-ink-900 border border-ink-800 rounded-xl p-4">
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="font-bold text-white flex items-center gap-2">
-          📋 طابور ميتا الإجباري
+          📌 المحادثات المعيّنة
           <span className={`text-[11px] px-2 py-0.5 rounded-full border ${queue.strict ? "bg-emerald-500/15 border-emerald-500/50 text-emerald-300" : "bg-ink-800 border-ink-700 text-slate-400"}`}>
-            {queue.strict ? "إجباري — إسناد تلقائي" : "يدوي"}
+            {queue.strict ? "إجباري — توزيع تلقائي" : "تعيين يدوي"}
           </span>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={toggleStrict} disabled={busy} className="text-xs bg-ink-850 hover:bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-slate-200 disabled:opacity-60">
-            {queue.strict ? "إيقاف الإجبار" : "تفعيل الإجبار"}
-          </button>
-          <button onClick={enqueueTest} disabled={busy} className="text-xs bg-brand-500 hover:bg-brand-400 text-white rounded-lg px-3 py-1.5 disabled:opacity-60">
-            + محادثة
+        <button onClick={toggleStrict} disabled={busy} className="text-xs bg-ink-850 hover:bg-ink-800 border border-ink-700 rounded-lg px-3 py-1.5 text-slate-200 disabled:opacity-60">
+          {queue.strict ? "إيقاف التوزيع التلقائي" : "تفعيل التوزيع التلقائي"}
+        </button>
+      </div>
+
+      {/* نموذج تعيين محادثة (بدل البيانات الوهمية) */}
+      <div className="bg-ink-850 border border-ink-800 rounded-lg p-3 mb-4">
+        <div className="text-xs font-bold text-slate-400 mb-2">تعيين محادثة — تصل لمن اخترته إشعار + تتلوّن في ميتا</div>
+        <div className="flex flex-wrap gap-2">
+          <input value={cref} onChange={(e) => setCref(e.target.value)} placeholder="اسم العميل/المحادثة" className="flex-1 min-w-[140px] bg-ink-900 border border-ink-700 rounded-lg px-3 py-2 text-white text-sm outline-none focus:border-brand-400" />
+          <input value={clink} onChange={(e) => setClink(e.target.value)} dir="ltr" placeholder="رابط المحادثة (اختياري)" className="flex-1 min-w-[140px] bg-ink-900 border border-ink-700 rounded-lg px-3 py-2 text-white text-xs outline-none focus:border-brand-400" />
+          <select value={cto} onChange={(e) => setCto(e.target.value)} className="bg-ink-900 border border-ink-700 rounded-lg px-2 py-2 text-slate-200 text-sm outline-none">
+            <option value="all">🔔 الكل</option>
+            {staff.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </select>
+          <button onClick={assignNew} disabled={busy || !cref.trim()} className="bg-brand-500 hover:bg-brand-400 text-white rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50">
+            تعيين
           </button>
         </div>
       </div>
 
-      {/* إحصائيات */}
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2 mb-4">
         <Tile label="في الانتظار" value={queue.waiting} cls={waitTone} />
         <Tile label="قيد المعالجة" value={queue.assigned} />
@@ -90,20 +107,12 @@ export default function QueueBoard() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* في الانتظار */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="text-xs font-bold text-slate-400">في الانتظار ({queue.waiting})</div>
             {workers.length > 0 && (
-              <select
-                value={target}
-                onChange={(e) => setAssignTo(e.target.value)}
-                className="text-[11px] bg-ink-850 border border-ink-700 rounded-md px-2 py-1 text-slate-200 outline-none max-w-[45%]"
-                title="اختر موظفًا ثم اضغط أسند"
-              >
-                {workers.map((w) => (
-                  <option key={w.id} value={w.id}>{w.name}</option>
-                ))}
+              <select value={target} onChange={(e) => setAssignTo(e.target.value)} className="text-[11px] bg-ink-850 border border-ink-700 rounded-md px-2 py-1 text-slate-200 outline-none max-w-[45%]" title="اختر موظفًا ثم اضغط أسند">
+                {workers.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
               </select>
             )}
           </div>
@@ -116,23 +125,16 @@ export default function QueueBoard() {
                   <span className={`badge text-[10px] px-1.5 py-0.5 rounded-full border shrink-0 ${PR_CLS[t.priority]}`}>{PR_LABEL[t.priority]}</span>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs text-white truncate">{t.customerRef}</div>
-                    <div className="text-[10px] text-slate-500 truncate">{CH_LABEL[t.channel] ?? t.channel} · {t.preview}</div>
+                    <div className="text-[10px] text-slate-500 truncate">{CH_LABEL[t.channel] ?? t.channel} · {t.preview}{t.link ? " · 🔗" : ""}</div>
                   </div>
                   <span className="text-[10px] text-amber-400 shrink-0">{fmtGap(sinceMs(t.enqueuedAt))}</span>
-                  <button
-                    onClick={() => assign(t)}
-                    disabled={busy || !target}
-                    className="text-[11px] bg-brand-500/20 border border-brand-400 text-brand-300 rounded-md px-2 py-1 shrink-0 disabled:opacity-40"
-                  >
-                    أسند
-                  </button>
+                  <button onClick={() => assign(t)} disabled={busy || !target} className="text-[11px] bg-brand-500/20 border border-brand-400 text-brand-300 rounded-md px-2 py-1 shrink-0 disabled:opacity-40">أسند</button>
                 </div>
               ))}
             </div>
           )}
         </div>
 
-        {/* من يعالج ماذا */}
         <div>
           <div className="text-xs font-bold text-slate-400 mb-2">الموظفون ({roster.length})</div>
           {roster.length === 0 ? (
@@ -140,20 +142,14 @@ export default function QueueBoard() {
           ) : (
             <div className="space-y-1.5 max-h-72 overflow-y-auto">
               {roster.map((p) => (
-                <div
-                  key={p.employeeId}
-                  onClick={() => select(p.employeeId)}
-                  className="flex items-center gap-2 bg-ink-850 border border-ink-800 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-brand-400/50"
-                >
+                <div key={p.employeeId} onClick={() => select(p.employeeId)} className="flex items-center gap-2 bg-ink-850 border border-ink-800 rounded-lg px-2.5 py-1.5 cursor-pointer hover:border-brand-400/50">
                   <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.color }} />
                   <span className="text-xs text-white truncate w-24 shrink-0">{p.name}</span>
                   <div className="flex-1 min-w-0">
                     {p.current ? (
                       <>
                         <div className="text-xs text-slate-200 truncate">{p.current.customerRef}</div>
-                        <div className="text-[10px] text-slate-500 truncate">
-                          {CH_LABEL[p.current.channel] ?? p.current.channel} · منذ {fmtGap(sinceMs(p.current.assignedAt))}
-                        </div>
+                        <div className="text-[10px] text-slate-500 truncate">{CH_LABEL[p.current.channel] ?? p.current.channel} · منذ {fmtGap(sinceMs(p.current.assignedAt))}</div>
                       </>
                     ) : (
                       <span className="text-[11px] text-slate-600">فاضي — بلا مهمة</span>

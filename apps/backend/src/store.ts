@@ -732,7 +732,7 @@ class Store {
   }
 
   // ---------- alerts ----------
-  raiseAlert(input: { employeeId: string | null; kind: Alert["kind"]; severity?: string; message: string }): Alert {
+  raiseAlert(input: { employeeId: string | null; kind: Alert["kind"]; severity?: string; message: string; link?: string | null }): Alert {
     // منع التكرار لنفس النوع والموظف خلال دقيقتين
     const recent = this.alerts.find(
       (a) =>
@@ -748,6 +748,7 @@ class Store {
       kind: input.kind,
       severity: (input.severity as Alert["severity"]) ?? ViolationSeverity.MEDIUM,
       message: input.message,
+      link: input.link ?? null,
       at: nowIso(),
       resolvedAt: null,
     };
@@ -1060,7 +1061,8 @@ class Store {
     const now = Date.now();
     for (const t of this.queue) {
       if (t.status === QueueStatus.WAITING && now - new Date(t.enqueuedAt).getTime() > Thresholds.QUEUE_WAIT_WARN_MS) {
-        this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `محادثة منتظرة في الطابور أكثر من 3 دقائق` });
+        const isComment = t.channel === Channel.COMMENTS;
+        this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `${isComment ? "تعليق" : "محادثة"} بدون رد أكثر من 3 دقائق: ${t.customerRef}`, link: t.link });
       }
       if (t.status === QueueStatus.ASSIGNED && t.assignedTo && t.assignedAt && now - new Date(t.assignedAt).getTime() > Thresholds.QUEUE_HANDLE_WARN_MS) {
         // لا ننبّه لو الموظف فعلًا بيرد في المحادثة (يمنع إنذار "ماسك بدون رد" الكاذب)

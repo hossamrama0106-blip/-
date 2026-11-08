@@ -60,6 +60,9 @@ export default function AlertsRail() {
                       فتح {name(a.employeeId)}
                     </button>
                   )}
+                  {a.link && (
+                    <a href={a.link} target="_blank" rel="noreferrer" className="text-xs text-brand-400 hover:underline">🔗 فتح المحادثة</a>
+                  )}
                   <button onClick={() => api.resolveAlert(a.id)} className="text-xs text-slate-400 hover:text-white">
                     تجاهل
                   </button>
