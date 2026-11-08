@@ -350,13 +350,24 @@ def run_gui(cfg):
     import tkinter as tk
     from tkinter import ttk
 
-    BG, CARD, FG, SUB, ACC = "#0f141c", "#1b2432", "#e5e7eb", "#94a3b8", "#6366f1"
+    BG, CARD, FG, SUB, ACC, BORDER = "#0b0f17", "#141c29", "#e5e7eb", "#8b93a7", "#6366f1", "#27313f"
     root = tk.Tk()
     root.title("Khiam Ops — متابعة الأداء")
     root.configure(bg=BG)
-    root.geometry("440x560")
+    try:
+        w, h = 460, 600
+        x = (root.winfo_screenwidth() - w) // 2
+        y = max(0, (root.winfo_screenheight() - h) // 3)
+        root.geometry(f"{w}x{h}+{x}+{y}")
+        root.minsize(440, 560)
+    except Exception:
+        root.geometry("460x600")
     try:
         root.option_add("*Font", "Tahoma 10")
+        _st = ttk.Style(root)
+        _st.theme_use("clam")
+        _st.configure("Khiam.Horizontal.TProgressbar", troughcolor=CARD, background=ACC,
+                      bordercolor=CARD, lightcolor=ACC, darkcolor=ACC)
     except Exception:
         pass
 
@@ -364,16 +375,24 @@ def run_gui(cfg):
     stop_event = threading.Event()
     state = {"thread": None, "eid": None, "name": None}
 
-    tk.Label(root, text="Khiam Ops", bg=BG, fg="#fff", font="Tahoma 18 bold").pack(pady=(16, 2))
-    tk.Label(root, text="برنامج متابعة الأداء — معلن وشفّاف", bg=BG, fg=SUB, font="Tahoma 9").pack()
+    head = tk.Frame(root, bg=BG)
+    head.pack(fill="x", pady=(18, 4))
+    cv = tk.Canvas(head, width=56, height=56, bg=BG, highlightthickness=0)
+    cv.create_oval(5, 5, 51, 51, fill=ACC, outline="")
+    cv.create_text(28, 28, text="K", fill="#ffffff", font="Tahoma 20 bold")
+    cv.pack()
+    tk.Label(head, text="Khiam Ops", bg=BG, fg="#ffffff", font="Tahoma 17 bold").pack(pady=(8, 1))
+    tk.Label(head, text="برنامج متابعة الأداء — معلن وشفّاف", bg=BG, fg=SUB, font="Tahoma 9").pack()
 
     login = tk.Frame(root, bg=BG)
     login.pack(fill="x", padx=24, pady=16)
 
     def field(parent, label, val="", show=None):
-        tk.Label(parent, text=label, bg=BG, fg=SUB, anchor="e").pack(fill="x", pady=(8, 2))
-        e = tk.Entry(parent, bg=CARD, fg=FG, insertbackground=FG, relief="flat", show=show)
-        e.pack(fill="x", ipady=5)
+        tk.Label(parent, text=label, bg=BG, fg=SUB, anchor="e", font="Tahoma 9 bold").pack(fill="x", pady=(11, 3))
+        box = tk.Frame(parent, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
+        box.pack(fill="x")
+        e = tk.Entry(box, bg=CARD, fg=FG, insertbackground=FG, relief="flat", show=show, font="Tahoma 11")
+        e.pack(fill="x", padx=9, ipady=7)
         e.insert(0, val)
         return e
 
@@ -389,7 +408,7 @@ def run_gui(cfg):
 
     err = tk.Label(login, text="", bg=BG, fg="#f87171", font="Tahoma 9")
     err.pack(fill="x", pady=(6, 0))
-    prog = ttk.Progressbar(login, mode="indeterminate")
+    prog = ttk.Progressbar(login, mode="indeterminate", style="Khiam.Horizontal.TProgressbar")
     btn = tk.Button(login, text="تثبيت وبدء المتابعة", bg=ACC, fg="#fff", relief="flat",
                     activebackground="#4f46e5", font="Tahoma 11 bold", cursor="hand2")
     btn.pack(fill="x", ipady=8, pady=(12, 0))
@@ -402,11 +421,11 @@ def run_gui(cfg):
     rows = {}
 
     def status_row(parent, key, label):
-        fr = tk.Frame(parent, bg=CARD)
-        fr.pack(fill="x", pady=3, ipady=4)
-        tk.Label(fr, text=label, bg=CARD, fg=SUB, width=14, anchor="e").pack(side="right", padx=8)
-        v = tk.Label(fr, text="—", bg=CARD, fg=FG, anchor="w")
-        v.pack(side="right", fill="x", expand=True)
+        fr = tk.Frame(parent, bg=CARD, highlightbackground=BORDER, highlightthickness=1)
+        fr.pack(fill="x", pady=3, ipady=6)
+        tk.Label(fr, text=label, bg=CARD, fg=SUB, width=14, anchor="e", font="Tahoma 9").pack(side="right", padx=10)
+        v = tk.Label(fr, text="—", bg=CARD, fg=FG, anchor="w", font="Tahoma 10 bold")
+        v.pack(side="right", fill="x", expand=True, padx=(0, 4))
         rows[key] = v
 
     def build_status():
@@ -416,8 +435,9 @@ def run_gui(cfg):
         for k, lb in (("window", "النافذة"), ("cat", "النشاط"), ("idle", "الخمول"), ("live", "مراقبة لايف")):
             status_row(status, k, lb)
         guide = tk.Label(status, bg=CARD, fg=SUB, justify="right", anchor="e", wraplength=360,
+                         highlightbackground=BORDER, highlightthickness=1, padx=12,
                          text="▸ ثبّت الإضافة على كروم: chrome://extensions ← Developer mode ← Load unpacked ← مجلد extension\n▸ سيبه شغّال طول الشيفت.")
-        guide.pack(fill="x", pady=(12, 6), ipady=8)
+        guide.pack(fill="x", pady=(12, 6), ipady=10)
         tk.Button(status, text="إيقاف المتابعة", bg="#b91c1c", fg="#fff", relief="flat",
                   activebackground="#991b1b", command=on_stop, cursor="hand2").pack(fill="x", ipady=6, pady=(4, 0))
 
