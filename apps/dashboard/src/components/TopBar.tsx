@@ -28,14 +28,16 @@ export default function TopBar() {
     queue: s.queue,
   })));
 
-  const activeCount = employees.filter((e) => live[e.id]?.online).length;
+  // عدّاد النشطين: الموظفون فقط (استبعاد المدير/القائد)
+  const monitored = employees.filter((e) => e.role === "employee");
+  const activeCount = monitored.filter((e) => live[e.id]?.online).length;
   const criticalAlerts = alerts.filter((a) => a.severity === "high").length;
 
   return (
-    <header className="flex items-center gap-4 px-5 h-16 bg-ink-900 border-b border-ink-800 sticky top-0 z-30">
+    <header className="flex items-center gap-3 px-5 h-20 bg-ink-900 border-b border-ink-800 sticky top-0 z-30 overflow-x-auto">
       <div className="font-extrabold text-white text-lg whitespace-nowrap">Khiam Ops</div>
 
-      <div className="flex items-center gap-2 text-sm">
+      <div className="flex items-center gap-2 text-sm whitespace-nowrap">
         <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-red-500"}`} />
         <span className="text-slate-400">{connected ? "متصل لحظيًا" : "غير متصل"}</span>
       </div>
@@ -45,7 +47,7 @@ export default function TopBar() {
       <Stat label="رسائل غير مقروءة" value={inbox.unreadMessages} tone={inbox.unreadMessages >= 15 ? "bad" : "neutral"} />
       <Stat label="تعليقات غير مقروءة" value={inbox.unreadComments} tone={inbox.unreadComments >= 10 ? "warn" : "neutral"} />
       {queue && <Stat label="طابور ميتا" value={queue.waiting} tone={queue.waiting >= 15 ? "bad" : queue.waiting >= 8 ? "warn" : "neutral"} />}
-      <Stat label="موظفون نشطون" value={`${activeCount}/${employees.length}`} tone="good" />
+      <Stat label="موظفون نشطون" value={`${activeCount}/${monitored.length}`} tone="good" />
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
       {inbox.unreadMessages >= 25 && (
         <div className="text-center px-3 py-1 rounded-lg bg-orange-600 text-white min-w-20 pulse-red">
@@ -54,93 +56,40 @@ export default function TopBar() {
         </div>
       )}
 
-      {role === "admin" && (
-        <button
-          onClick={() => setShowRemote(true)}
-          title="التحكّم عن بُعد"
-          className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-        >
-          🎛️
-        </button>
-      )}
-      <button
-        onClick={() => setShowComments(true)}
-        title="بوت التعليقات"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        🤖
-      </button>
-      <button
-        onClick={() => setShowTour(true)}
-        title="جولة تعريفية"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        ؟
-      </button>
-      <button
-        onClick={() => setTheme(theme === "light" ? "dark" : "light")}
-        title="تبديل الوضع الفاتح/الداكن"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        {theme === "light" ? "🌙" : "☀️"}
-      </button>
-      <PushToTalk />
-      <button
-        onClick={() => {
+      {/* أزرار بأسماء تحتها (بدل أيقونات مبهمة) */}
+      <div className="flex items-center gap-1.5">
+        {role === "admin" && <IconBtn icon="🎛️" label="تحكّم عن بُعد" onClick={() => setShowRemote(true)} />}
+        <IconBtn icon="🤖" label="بوت التعليقات" onClick={() => setShowComments(true)} />
+        <IconBtn icon="📊" label="مؤشرات" onClick={() => setShowKpi(true)} />
+        <IconBtn icon="📄" label="تقرير يومي" onClick={() => setShowReport(true)} />
+        <IconBtn icon="🧾" label="سجل التدقيق" onClick={() => setShowAudit(true)} />
+        <IconBtn icon="📢" label="نداء صوتي" onClick={() => {
           const t = prompt("اكتب نص النداء الصوتي لكل الموظفين (هيُنطق عند الجميع):");
           if (t) api.sendNotification({ type: "broadcast_audio", from: adminId ?? "admin", to: "all", body: t });
-        }}
-        title="نداء صوتي جماعي"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        📢
-      </button>
-      <button
-        onClick={() => setShowKpi(true)}
-        title="مؤشرات الأداء (KPI)"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        📊
-      </button>
-      <button
-        onClick={() => setShowReport(true)}
-        title="تقرير الأداء اليومي"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        📄
-      </button>
-      <button
-        onClick={() => setShowAudit(true)}
-        title="سجل التدقيق — أثر أفعال الإدارة"
-        className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        🧾
-      </button>
-      {role === "admin" && (
-        <button
-          onClick={() => setShowSettings(true)}
-          title="الإعدادات والتكاملات"
-          className="mr-2 text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-        >
-          ⚙️
-        </button>
-      )}
-      <button
-        onClick={() => setNight(!nightMode)}
-        title="الرادار الليلي الآلي"
-        className={`mr-2 text-sm border rounded-lg px-3 py-2 transition ${
-          nightMode ? "bg-brand-500/20 border-brand-400 text-brand-400" : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
-        }`}
-      >
-        🌙 {nightMode ? "الرادار مفعّل" : "رادار ليلي"}
-      </button>
-      <button
-        onClick={() => setLite(!liteMode)}
-        className="text-sm bg-ink-800 hover:bg-ink-700 border border-ink-700 rounded-lg px-3 py-2 text-slate-200 transition"
-      >
-        {liteMode ? "الوضع الكامل" : "الوضع البسيط"}
-      </button>
+        }} />
+        <PushToTalk />
+        <IconBtn icon="🌃" label={nightMode ? "رادار مفعّل" : "رادار ليلي"} active={nightMode} onClick={() => setNight(!nightMode)} />
+        <IconBtn icon={theme === "light" ? "🌙" : "☀️"} label={theme === "light" ? "داكن" : "فاتح"} onClick={() => setTheme(theme === "light" ? "dark" : "light")} />
+        <IconBtn icon={liteMode ? "🖥️" : "📱"} label={liteMode ? "وضع كامل" : "وضع بسيط"} onClick={() => setLite(!liteMode)} />
+        {role === "admin" && <IconBtn icon="⚙️" label="الإعدادات" onClick={() => setShowSettings(true)} />}
+        <IconBtn icon="❓" label="جولة" onClick={() => setShowTour(true)} />
+      </div>
     </header>
+  );
+}
+
+function IconBtn({ icon, label, onClick, active, title }: { icon: string; label: string; onClick: () => void; active?: boolean; title?: string }) {
+  return (
+    <button
+      onClick={onClick}
+      title={title ?? label}
+      className={`flex flex-col items-center justify-center gap-0.5 rounded-lg px-2.5 py-1.5 border transition min-w-[56px] ${
+        active ? "bg-brand-500/20 border-brand-400 text-brand-400" : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
+      }`}
+    >
+      <span className="text-base leading-none">{icon}</span>
+      <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
+    </button>
   );
 }
 

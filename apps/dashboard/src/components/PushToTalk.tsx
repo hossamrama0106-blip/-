@@ -63,11 +63,12 @@ export default function PushToTalk() {
       }}
       onTouchEnd={stop}
       title={err ? "تعذّر الوصول للميكروفون" : "اضغط مع الاستمرار للتحدّث (لاسلكي)"}
-      className={`mr-2 text-sm border rounded-lg px-3 py-2 transition select-none ${
+      className={`flex flex-col items-center justify-center gap-0.5 rounded-lg px-2.5 py-1.5 border transition select-none min-w-[56px] ${
         rec ? "bg-red-600/30 border-red-500 text-red-300 pulse-red" : err ? "bg-ink-800 border-red-700 text-red-400" : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
       }`}
     >
-      {rec ? "🔴 يتحدث…" : "🎙️"}
+      <span className="text-base leading-none">{rec ? "🔴" : "🎙️"}</span>
+      <span className="text-[10px] leading-none whitespace-nowrap">{rec ? "يتحدّث…" : "لاسلكي"}</span>
     </button>
   );
 }

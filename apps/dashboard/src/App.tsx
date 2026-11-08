@@ -53,9 +53,9 @@ function FullDashboard() {
   })));
   const [showAdd, setShowAdd] = useState(false);
 
-  // ترتيب: المشاكل أولاً (إدارة بالاستثناء)
+  // ترتيب: المشاكل أولاً (إدارة بالاستثناء) — موظفون فقط (استبعاد المدير/القائد من المراقبة)
   const ordered = useMemo(() => {
-    return [...employees].sort((a, b) => {
+    return employees.filter((e) => e.role === "employee").sort((a, b) => {
       const sa = live[a.id]?.status ?? "offline";
       const sb = live[b.id]?.status ?? "offline";
       return toneRank(sa) - toneRank(sb);

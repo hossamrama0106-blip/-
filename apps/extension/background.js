@@ -1,7 +1,7 @@
 // Service worker — كل الاتصال بالـ backend يمرّ من هنا (عشان CSP بتاعة المواقع متمنعش fetch).
 // رابط الخادم: من التخزين (يضبطه المدير من البوب) وإلا الافتراضي.
 // عدّل DEFAULT_BACKEND لرابط الإنتاج قبل التوزيع، أو اضبطه من البوب (⚙ إعدادات الخادم).
-const DEFAULT_BACKEND = "http://localhost:8787";
+const DEFAULT_BACKEND = "https://khiam-ops.onrender.com";
 let backendUrl = null;
 async function getBackend() {
   if (backendUrl) return backendUrl;

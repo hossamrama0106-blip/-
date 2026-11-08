@@ -190,6 +190,10 @@ class Store {
     if (!u) return null;
     return this.employees.find((e) => (e.username || e.code || "").toLowerCase() === u) ?? null;
   }
+  /** الموظفون الخاضعون للمراقبة فقط — استبعاد المدير/قائد الفريق من اللوحات والترتيب والتقارير والعدّادات */
+  private monitored(): Employee[] {
+    return this.employees.filter((e) => e.role === Role.EMPLOYEE);
+  }
   /** ضبط كلمة سر موظف (تُخزَّن مجزّأة). */
   setPassword(id: string, plain: string): void {
     this.creds.set(id, hashPassword(plain));
@@ -479,12 +483,12 @@ class Store {
   }
 
   allCounters(date = today()): CountersDaily[] {
-    return this.employees.map((e) => this.getCounters(e.id, date));
+    return this.monitored().map((e) => this.getCounters(e.id, date));
   }
 
   /** لوحة الترتيب والمقارنة */
   leaderboard(date = today()) {
-    const rows = this.employees.map((e) => {
+    const rows = this.monitored().map((e) => {
       const c = this.getCounters(e.id, date);
       const pts = this.points
         .filter((p) => p.employeeId === e.id)
@@ -973,7 +977,7 @@ class Store {
     const recentDone = this.queue.filter((t) => t.status === QueueStatus.DONE && t.doneAt && new Date(t.doneAt).getTime() >= dayStart);
     const avg = (arr: number[]) => (arr.length ? Math.round(arr.reduce((a, b) => a + b, 0) / arr.length) : null);
     const now = Date.now();
-    const perEmployee = this.employees.map((e) => ({
+    const perEmployee = this.monitored().map((e) => ({
       employeeId: e.id,
       name: e.name,
       color: e.avatarColor,
@@ -1016,7 +1020,7 @@ class Store {
   sampleMetrics(): void {
     let online = 0;
     let queueDone = 0;
-    for (const e of this.employees) {
+    for (const e of this.monitored()) {
       if (this.getLive(e.id).online) online++;
       queueDone += this.getCounters(e.id).tasksDone;
     }
@@ -1067,7 +1071,7 @@ class Store {
   /** تقرير أداء يومي شامل (أدمِن) — تجميع لكل موظف + إجماليات الفريق، قابل للتصدير */
   dailyReport(date = today()) {
     const inDay = (iso: string | null | undefined) => typeof iso === "string" && localDate(new Date(iso).getTime()) === date;
-    const rows = this.employees.map((e) => {
+    const rows = this.monitored().map((e) => {
       const c = this.getCounters(e.id, date);
       const l = this.getLive(e.id);
       const points = this.points.filter((p) => p.employeeId === e.id && inDay(p.at)).reduce((a, p) => a + p.delta, 0);

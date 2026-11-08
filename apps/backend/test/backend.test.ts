@@ -135,8 +135,8 @@ test("queue: queueByChannel يعدّ المنتظر لكل قناة", () => {
 // ---------- تقرير الأداء اليومي ----------
 test("report: dailyReport يرجّع صفًّا لكل موظف + إجماليات متّسقة", () => {
   const r = store.dailyReport();
-  // صف لكل موظف
-  assert.equal(r.rows.length, store.employees.length);
+  // صف لكل موظف خاضع للمراقبة (استبعاد المدير/القائد)
+  assert.equal(r.rows.length, store.employees.filter((e) => e.role === "employee").length);
   assert.equal(r.team.employees, r.rows.length);
   // إجمالي الرسائل = مجموع صفوف الموظفين (اتّساق التجميع)
   const sumMsgs = r.rows.reduce((a, x) => a + x.msgs, 0);
