@@ -52,6 +52,7 @@ export default function DetailPanel() {
   const curTask = queueMine?.current ?? null;
   const CH_LABEL: Record<string, string> = { messenger: "ماسنجر", instagram: "انستجرام", whatsapp: "واتساب", comments: "تعليقات", operix: "أوبريكس" };
   const PR_LABEL: Record<string, string> = { vip: "VIP", high: "مهمة", normal: "عادية" };
+  const fmtDur = (ms: number) => { const m = Math.round((ms || 0) / 60000); return m >= 60 ? `${Math.floor(m / 60)}س ${m % 60}د` : `${m}د`; };
 
   const act = async (key: string, fn: () => Promise<any>) => {
     setBusy(key);
@@ -114,6 +115,7 @@ export default function DetailPanel() {
           <Counter label="نقاط" value={row?.points ?? 0} accent={(row?.points ?? 0) >= 0 ? "good" : "bad"} />
         </div>
         <div className="grid grid-cols-2 gap-2 mb-5 text-sm">
+          <Info label="ساعات اليوم" value={fmtDur(row?.workedMs ?? 0)} />
           <Info label="متوسط الفجوة بين الردود" value={fmtGap(row?.avgGapMs ?? null)} />
           <Info label="فتح ولم يرد" value={String(row?.openNoReply ?? 0)} />
         </div>

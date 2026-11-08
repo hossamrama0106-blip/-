@@ -578,6 +578,7 @@
         toast("📋 مهمة جديدة", `${state.task.customerRef}${state.task.preview ? " — " + state.task.preview : ""}`, true);
       }
       render();
+      highlightAssigned();
     }
   }
   let mouseTimer = 0;
@@ -704,6 +705,33 @@
     } catch (e) {
       return { ok: false, unread: null, items: [], error: String(e) };
     }
+  }
+  // ---------- تلوين المحادثة المُسنَدة داخل ميتا (المدير عيّنها → لازم الرد عليها) ----------
+  let pageStyleInjected = false;
+  function injectPageStyle() {
+    if (pageStyleInjected) return;
+    pageStyleInjected = true;
+    try {
+      const st = document.createElement("style");
+      st.textContent = ".khiam-assigned{outline:3px solid #6366f1 !important;outline-offset:-3px;background:rgba(99,102,241,.14) !important;border-radius:8px;}";
+      (document.head || document.documentElement).appendChild(st);
+    } catch (_) {}
+  }
+  function highlightAssigned() {
+    if (SITE !== "meta") return;
+    injectPageStyle();
+    try { document.querySelectorAll(".khiam-assigned").forEach((el) => el.classList.remove("khiam-assigned")); } catch (_) {}
+    const t = state.task;
+    if (!t) return;
+    try {
+      for (const r of metaThreadRows()) {
+        const id = extIdFrom(r);
+        const name = textOf(titleEl(r));
+        if ((t.externalId && id === t.externalId) || (t.customerRef && name && (name.includes(t.customerRef) || t.customerRef.includes(name)))) {
+          r.classList.add("khiam-assigned");
+        }
+      }
+    } catch (_) {}
   }
   // ---------- المصدر الأساسي: جسر React fiber (inject.js في main world) ----------
   // بيانات المحادثات (المعرّف/غير-المقروء/الاسم/المعاينة/القناة) من props.thread — موثوقة وثابتة.
@@ -906,6 +934,7 @@
     setupFiberBridge(); // الأساسي: حقن inject.js (قراءة fiber) + استقبال
     setTimeout(scrapeAndSync, 4000); // fallback DOM (يتخطّى لو fiber شغّال)
     setInterval(scrapeAndSync, 20000);
+    setInterval(highlightAssigned, 8000); // أعد تلوين المحادثة المُسنَدة (ميتا تعيد رسم الصفوف)
   } else if (SITE === "whatsapp") {
     // واتساب ويب: قراءة DOM دفاعية (يتخطّى بأمان لو البنية مش مفهومة)
     setTimeout(scrapeAndSyncOther, 5000);

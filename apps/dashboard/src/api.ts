@@ -47,6 +47,7 @@ export interface LeaderboardRow {
   typingWpm: number;
   points: number;
   tasksDone: number;
+  workedMs: number;
   online: boolean;
   status: string;
 }

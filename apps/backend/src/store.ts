@@ -483,6 +483,8 @@ class Store {
         c.avgGapMs = c.avgGapMs == null ? gap : Math.round(c.avgGapMs * 0.7 + gap * 0.3);
       }
       l.lastReplyAt = Date.now();
+      // سجّل الرد في الخط الزمني (يظهر للإدارة: ردّ على مين وامتى)
+      this.addTimeline(input.employeeId, "activity", l.currentConversation ? `ردّ على ${l.currentConversation}` : "ردّ على محادثة", "work");
       // أول رسالة في الشيفت
       const s = [...this.shifts].reverse().find((x) => x.employeeId === input.employeeId && !x.endedAt);
       if (s && !s.firstMsgAt) s.firstMsgAt = nowIso();
@@ -531,6 +533,7 @@ class Store {
         typingWpm: l.typingWpm || c.typingWpm || 0,
         points: pts,
         tasksDone: this.tasksDoneToday(e.id),
+        workedMs: this.workedMsToday(e.id),
         online: l.online,
         status: l.status,
       };
@@ -970,6 +973,8 @@ class Store {
     t.assignedAt = nowIso();
     if (t.waitMs == null) t.waitMs = Date.now() - new Date(t.enqueuedAt).getTime();
     this.addTimeline(employeeId, "activity", `أسندت لك الإدارة محادثة ${t.customerRef}`, "work");
+    // أبلغ الموظف بالتعيين (إشعار بارز يرد منه) — جوهر "تعيين محادثة"
+    this.addNotification({ type: NotificationType.MESSAGE, from: "admin", to: employeeId, body: `📌 محادثة مُسنَدة لك: ${t.customerRef}${t.preview ? " — " + t.preview : ""}` });
     this.bumpQueue();
     return t;
   }
@@ -1033,6 +1038,21 @@ class Store {
   /** عدد المهام المنجزة اليوم لموظف (عدّاد دائم — لمقارنة الأداء) */
   tasksDoneToday(employeeId: string): number {
     return this.getCounters(employeeId).tasksDone;
+  }
+
+  /** زمن العمل اليوم (مجموع مدد الشيفتات + الجاري) بالمللي ثانية — "هل عمل 9 ساعات؟" */
+  workedMsToday(employeeId: string): number {
+    const dayStart = dayStartMs();
+    const now = Date.now();
+    let ms = 0;
+    for (const s of this.shifts) {
+      if (s.employeeId !== employeeId) continue;
+      const start = new Date(s.startedAt).getTime();
+      const end = s.endedAt ? new Date(s.endedAt).getTime() : now;
+      if (end < dayStart) continue;
+      ms += end - Math.max(start, dayStart);
+    }
+    return ms;
   }
 
   /** مسح الطابور: تصعيد المهام المنتظرة/المسندة الطويلة (يُستدعى من tick) */
