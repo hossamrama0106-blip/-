@@ -33,6 +33,8 @@ interface DashState {
   theme: string;
 
   login: (username: string, password: string) => Promise<void>;
+  logout: () => void;
+  init: () => Promise<void>;
   loadSnapshot: () => Promise<void>;
   connect: () => void;
   select: (id: string | null) => void;
@@ -53,6 +55,7 @@ interface DashState {
 }
 
 let es: EventSource | null = null;
+let poll: ReturnType<typeof setInterval> | null = null;
 
 export const useDash = create<DashState>((set, get) => ({
   connected: false,
@@ -85,13 +88,40 @@ export const useDash = create<DashState>((set, get) => ({
   async login(username: string, password: string) {
     const res: any = await api.login(username, password);
     setToken(res.token);
-    set({ loggedIn: true, adminId: res.employee?.id ?? "admin", role: res.employee?.role ?? "admin" });
+    const adminId = res.employee?.id ?? "admin";
+    const role = res.employee?.role ?? "admin";
+    try { localStorage.setItem("khiam_auth", JSON.stringify({ token: res.token, adminId, role })); } catch {}
+    set({ loggedIn: true, adminId, role });
     await get().loadSnapshot();
     get().connect();
     try {
       if (!localStorage.getItem("khiam_onboard_v1")) set({ showTour: true });
     } catch {
       /* الوضع الخاص قد يمنع القراءة */
+    }
+  },
+
+  logout() {
+    try { localStorage.removeItem("khiam_auth"); } catch {}
+    setToken("");
+    try { if (es) es.close(); } catch {}
+    es = null;
+    if (poll) { clearInterval(poll); poll = null; }
+    set({ loggedIn: false, connected: false, adminId: null });
+  },
+
+  // استعادة الجلسة من التخزين عند فتح الصفحة (يمنع إعادة كتابة الباسوورد كل refresh)
+  async init() {
+    let saved: { token: string; adminId: string; role: string } | null = null;
+    try { const raw = localStorage.getItem("khiam_auth"); if (raw) saved = JSON.parse(raw); } catch {}
+    if (!saved?.token) return;
+    setToken(saved.token);
+    set({ loggedIn: true, adminId: saved.adminId, role: saved.role });
+    try {
+      await get().loadSnapshot(); // توكن منتهي = 401
+      get().connect();
+    } catch {
+      get().logout(); // توكن غير صالح → شاشة الدخول
     }
   },
 
@@ -182,6 +212,10 @@ export const useDash = create<DashState>((set, get) => ({
       scheduleLb();
     });
     es.addEventListener(RealtimeEvent.ACTIVITY, scheduleLb);
+
+    // تحديث دوري احتياطي — لو SSE اتقطع على المنصّة، اللوحة تفضل محدّثة بلا refresh يدوي
+    if (poll) clearInterval(poll);
+    poll = setInterval(() => { get().loadSnapshot().catch(() => {}); }, 10000);
   },
 
   select: (id) => set({ selectedId: id }),

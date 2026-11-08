@@ -119,7 +119,7 @@ export default function DetailPanel() {
         </div>
 
         {/* مهمة الطابور الحالية */}
-        <Section title={`مهمة الطابور · منجز اليوم: ${queueMine?.doneToday ?? 0}`}>
+        <Section title={`المحادثة المُسنَدة · منجز اليوم: ${queueMine?.doneToday ?? 0}`}>
           {curTask ? (
             <div className="bg-ink-850 border border-ink-800 rounded-lg p-3">
               <div className="flex items-center gap-2 mb-1">
@@ -176,6 +176,7 @@ export default function DetailPanel() {
             </button>
           </div>
           <ActBtn full tone="bad" label="🚪 تسجيل خروج إجباري (قطع الجلسة فورًا)" onClick={() => act("logout", () => api.forceLogout(emp.id))} />
+          <ActBtn full tone="bad" label="🗑 حذف الحساب نهائيًا" onClick={() => { if (confirm(`حذف ${emp.name} نهائيًا؟ لا يمكن التراجع.`)) act("del", async () => { await api.removeEmployee(emp.id); select(null); }); }} />
         </Section>
 
         {/* رقابة متقدمة: لايف + هيستوري */}

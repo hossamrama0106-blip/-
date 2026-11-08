@@ -131,7 +131,7 @@ class Store {
   config: Config = {
     googleSheetWebhook: process.env.GOOGLE_SHEET_WEBHOOK || "",
     ntfyTopic: process.env.NTFY_TOPIC || "",
-    queueStrict: process.env.QUEUE_STRICT !== "0",
+    queueStrict: process.env.QUEUE_STRICT === "1", // افتراضيًا يدوي (الإدارة تعيّن)؛ الإجبار التلقائي فقط بـ QUEUE_STRICT=1
   };
   inbox: InboxSnapshot = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
   /** تجزئة كلمات السر: employeeId → hash (لا تُرسَل للواجهة أبدًا) */
@@ -256,6 +256,31 @@ class Store {
       created.push(this.addEmployee({ username: a.username, password: a.password, name: a.name, whatsapp: a.whatsapp ?? "", role: a.role }));
     }
     return created;
+  }
+  /** تنظيف البيانات التشغيلية (الوهمية/القديمة) مع إبقاء الحسابات وكلمات السر — إطلاق نظيف بلا إعادة بذر. */
+  clearOperational(): void {
+    this.shifts = [];
+    this.breaks = [];
+    this.activities = [];
+    this.counters = new Map();
+    this.reviews = [];
+    this.points = [];
+    this.violations = [];
+    this.notifications = [];
+    this.chat = [];
+    this.alerts = [];
+    this.screenshots = [];
+    this.timeline = [];
+    this.history = [];
+    this.queue = [];
+    this.metrics = [];
+    this.comments = [];
+    this.openNoReplyTimes = new Map();
+    this.commands = new Map();
+    this.inbox = { unreadMessages: 0, unreadComments: 0, at: nowIso() };
+    this.nightMode = false;
+    for (const e of this.employees) this.live.set(e.id, freshLive(e.id));
+    hub.broadcast(RealtimeEvent.QUEUE, this.queueStats());
   }
   updateEmployee(id: string, patch: Partial<Employee>): Employee | null {
     const emp = this.findEmployee(id);
@@ -572,6 +597,8 @@ class Store {
     };
     this.violations.push(v);
     hub.broadcast(RealtimeEvent.VIOLATION, v);
+    // أبلغ الموظف نفسه بالمخالفة (يظهر إشعار بارز في الإكستنشن يرد منه)
+    this.addNotification({ type: NotificationType.VIOLATION, from: "admin", to: v.employeeId, body: `⚠️ مخالفة: ${v.type}${v.reason ? " — " + v.reason : ""}` });
     // تكاملات خارجية (أفضل جهد بدون انتظار): جوجل شيت + تنبيه طوارئ للحرجة
     const emp = this.findEmployee(v.employeeId);
     void pushViolationToSheet(this.config.googleSheetWebhook, {
@@ -731,6 +758,12 @@ class Store {
     a.resolvedAt = nowIso();
     hub.broadcast(RealtimeEvent.ALERT, a);
     return a;
+  }
+  /** مسح كل التنبيهات الحية (زر Clear all). */
+  clearAlerts(): number {
+    let n = 0;
+    for (const a of this.alerts) if (!a.resolvedAt) { a.resolvedAt = nowIso(); n++; hub.broadcast(RealtimeEvent.ALERT, a); }
+    return n;
   }
 
   // ---------- ai / reviews / night radar ----------
@@ -1010,7 +1043,11 @@ class Store {
         this.raiseAlert({ employeeId: null, kind: "queue_pressure", severity: ViolationSeverity.HIGH, message: `محادثة منتظرة في الطابور أكثر من 3 دقائق` });
       }
       if (t.status === QueueStatus.ASSIGNED && t.assignedTo && t.assignedAt && now - new Date(t.assignedAt).getTime() > Thresholds.QUEUE_HANDLE_WARN_MS) {
-        this.raiseAlert({ employeeId: t.assignedTo, kind: "deal_at_risk", severity: ViolationSeverity.MEDIUM, message: `ماسك محادثة ${t.customerRef} بدون إنهاء أكثر من 5 دقائق` });
+        // لا ننبّه لو الموظف فعلًا بيرد في المحادثة (يمنع إنذار "ماسك بدون رد" الكاذب)
+        const lr = this.getLive(t.assignedTo).lastReplyAt;
+        if (!(lr && now - lr < Thresholds.QUEUE_HANDLE_WARN_MS)) {
+          this.raiseAlert({ employeeId: t.assignedTo, kind: "deal_at_risk", severity: ViolationSeverity.MEDIUM, message: `${t.customerRef}: محادثة مُسنَدة بدون رد أكثر من 5 دقائق` });
+        }
       }
     }
   }

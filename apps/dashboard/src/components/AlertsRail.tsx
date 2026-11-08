@@ -30,6 +30,11 @@ export default function AlertsRail() {
         <div className="font-bold text-white mb-3 flex items-center gap-2">
           التنبيهات الحية
           {alerts.length > 0 && <span className="text-xs bg-red-500 text-white rounded-full px-2 py-0.5">{alerts.length}</span>}
+          {alerts.length > 0 && (
+            <button onClick={() => api.clearAlerts().catch(() => {})} className="mr-auto text-[11px] text-slate-400 hover:text-white border border-ink-700 rounded px-2 py-0.5">
+              مسح الكل
+            </button>
+          )}
         </div>
         {alerts.length === 0 ? (
           <div className="text-sm text-slate-500 py-6 text-center">لا توجد تنبيهات — كل شيء هادئ ✅</div>

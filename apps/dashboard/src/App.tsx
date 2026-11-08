@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "./store";
 import { STATUS_META } from "./lib/ui";
@@ -21,7 +21,10 @@ import CommentsBot from "./components/CommentsBot";
 import RemoteControl from "./components/RemoteControl";
 
 export default function App() {
-  const { loggedIn, liteMode } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode })));
+  const { loggedIn, liteMode, init } = useDash(useShallow((s) => ({ loggedIn: s.loggedIn, liteMode: s.liteMode, init: s.init })));
+  const [booting, setBooting] = useState(true);
+  useEffect(() => { init().finally(() => setBooting(false)); }, [init]);
+  if (booting) return <div className="min-h-full grid place-items-center text-slate-400 text-sm">جارٍ التحميل…</div>;
   if (!loggedIn) return <Login />;
   return (
     <div className="min-h-full">

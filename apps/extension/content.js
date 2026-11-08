@@ -168,6 +168,10 @@
         .toast{ position:fixed;top:44px;left:12px;max-width:320px;background:#1b2432;border:1px solid #6366f1;
                 color:#e5e7eb;padding:10px 12px;border-radius:10px;font-size:13px;margin-top:8px;box-shadow:0 6px 20px rgba(0,0,0,.4); }
         .toast .t{ font-weight:700;margin-bottom:3px;color:#a5b4fc; }
+        .toast.big{ max-width:380px;border:2px solid #6366f1;background:#0f141c;padding:14px 16px; }
+        .toast.big.vio{ border-color:#ef4444; } .toast.big.call{ border-color:#ef4444;animation:pr 1.1s infinite; }
+        .toast.big .t{ font-size:15px; } .toast.big .b{ font-size:14px;line-height:1.6;margin-top:4px;color:#e5e7eb; }
+        .nrow{ display:flex;gap:6px;margin-top:10px; } .ninp{ flex:1;background:#1b2432;border:1px solid #273243;border-radius:7px;padding:7px 10px;color:#fff;font-size:13px;outline:none; }
         .wrap{ direction:rtl; }
         .panel{ position:fixed;top:44px;left:12px;width:320px;max-height:60vh;background:#0f141c;border:1px solid #273243;
                 border-radius:12px;display:none;flex-direction:column;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.5); }
@@ -195,6 +199,7 @@
           <span class="peak" id="peak"></span>
           <span class="rank" id="rank" style="display:none"></span>
           <span id="controls" style="display:flex;gap:8px;align-items:center"></span>
+          <button id="minBtn" title="تصغير الشريط">—</button>
           <button id="chatBtn" title="الشات الداخلي">💬</button>
         </div>
         <div class="toast-area" id="toasts"></div>
@@ -224,6 +229,7 @@
       rank: root.getElementById("rank"),
       controls: root.getElementById("controls"),
       chatBtn: root.getElementById("chatBtn"),
+      minBtn: root.getElementById("minBtn"),
       bar: root.querySelector(".bar"),
       peak: root.getElementById("peak"),
       taskChip: root.getElementById("taskChip"),
@@ -240,6 +246,18 @@
       consentOk: root.getElementById("consentOk"),
     };
     els.chatBtn.addEventListener("click", toggleChat);
+    els.minBtn.addEventListener("click", () => {
+      host.style.display = "none";
+      let r = document.getElementById("khiam-restore");
+      if (!r) {
+        r = document.createElement("div");
+        r.id = "khiam-restore";
+        r.textContent = "Khiam ▸";
+        r.style.cssText = "position:fixed;top:8px;right:8px;z-index:2147483647;background:#6366f1;color:#fff;font:600 12px sans-serif;padding:5px 11px;border-radius:999px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)";
+        r.addEventListener("click", () => { host.style.display = ""; r.remove(); });
+        (document.documentElement || document.body).appendChild(r);
+      } else r.style.display = "";
+    });
     els.chatSend.addEventListener("click", sendChat);
     els.chatInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); sendChat(); } });
     els.taskChip.addEventListener("click", () => { if (!state.task && state.queueWaiting > 0) pullNext(); else toggleTaskPanel(); });
@@ -346,6 +364,31 @@
     d.querySelector(".b").textContent = body;
     els.toasts.appendChild(d);
     setTimeout(() => d.remove(), 7000);
+  }
+  // إشعار بارز مع ردّ (رسالة الإدارة / مخالفة / نداء المدير) — بدل التوست الصغير
+  function bigNotif(n) {
+    if (!els) return;
+    beep(880, 0.16, 0.08);
+    const d = document.createElement("div");
+    d.className = "toast big" + (n.type === "violation" ? " vio" : n.type === "broadcast_audio" ? " call" : "");
+    const titles = { message: "📩 رسالة من الإدارة", violation: "⚠️ مخالفة", broadcast_audio: "🔴 المدير ينادي", notice: "🔔 إشعار", spotlight: "🔴 عين الرقابة" };
+    d.innerHTML = `<div class="t"></div><div class="b"></div>`;
+    d.querySelector(".t").textContent = titles[n.type] || "إشعار";
+    d.querySelector(".b").textContent = n.body || "";
+    if (n.type === "message" || n.type === "violation") {
+      const row = document.createElement("div"); row.className = "nrow";
+      const inp = document.createElement("input"); inp.className = "ninp"; inp.placeholder = "اكتب ردّك…";
+      const btn = document.createElement("button"); btn.className = "primary"; btn.textContent = "إرسال";
+      const go = () => { const v = inp.value.trim(); if (!v) return; send("notifReply", { id: n.id, reply: v }); d.remove(); };
+      btn.addEventListener("click", go);
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.stopPropagation(); go(); } });
+      row.appendChild(inp); row.appendChild(btn); d.appendChild(row);
+    } else {
+      const ok = document.createElement("button"); ok.className = "primary"; ok.textContent = "تمام"; ok.style.marginTop = "8px";
+      ok.addEventListener("click", () => d.remove()); d.appendChild(ok);
+      setTimeout(() => d.remove(), 20000);
+    }
+    els.toasts.appendChild(d);
   }
 
   // ---------- chat ----------
@@ -550,9 +593,13 @@
     (r.data || []).forEach((n) => {
       if (state.seenNotif.has(n.id)) return;
       state.seenNotif.add(n.id);
-      const titles = { notice: "إشعار", message: "رسالة من الإدارة", violation: "⚠ مخالفة", broadcast_audio: "🔊 نداء صوتي", spotlight: "🔴 عين الرقابة" };
-      toast(titles[n.type] || "إشعار", n.body, n.type === "broadcast_audio" || n.type === "violation");
-      if (n.type === "broadcast_audio") { if (n.audioUrl) playVoice(n.audioUrl); else speak(n.body); }
+      if (n.type === "message" || n.type === "violation" || n.type === "broadcast_audio") {
+        bigNotif(n); // إشعار بارز (يرد منه) بدل التوست الصغير
+        if (n.type === "broadcast_audio") { if (n.audioUrl) playVoice(n.audioUrl); else speak(n.body); }
+      } else {
+        const titles = { notice: "🔔 إشعار", spotlight: "🔴 عين الرقابة" };
+        toast(titles[n.type] || "إشعار", n.body, false);
+      }
     });
   }
 

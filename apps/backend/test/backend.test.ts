@@ -84,6 +84,7 @@ test("queue: الإسناد يحترم الأولوية (vip قبل normal)", ()
 
 test("queue: تم،التالي يُنهي المهمة ويُسند التالية تلقائيًا", () => {
   store.queue.length = 0;
+  store.setConfig({ queueStrict: true }); // هذا الاختبار يغطّي وضع الإجبار التلقائي
   store.startShift("emp_011");
   store.releaseEmployeeTasks("emp_011");
   const t1 = store.enqueueTask({ customerRef: "QT2-a" });

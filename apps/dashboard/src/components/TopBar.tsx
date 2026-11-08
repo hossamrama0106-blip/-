@@ -4,7 +4,7 @@ import { api } from "../api";
 import PushToTalk from "./PushToTalk";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme, logout } = useDash(useShallow((s) => ({
     connected: s.connected,
     adminId: s.adminId,
     role: s.role,
@@ -24,6 +24,7 @@ export default function TopBar() {
     setShowRemote: s.setShowRemote,
     theme: s.theme,
     setTheme: s.setTheme,
+    logout: s.logout,
     alerts: s.alerts,
     queue: s.queue,
   })));
@@ -46,7 +47,7 @@ export default function TopBar() {
 
       <Stat label="رسائل غير مقروءة" value={inbox.unreadMessages} tone={inbox.unreadMessages >= 15 ? "bad" : "neutral"} />
       <Stat label="تعليقات غير مقروءة" value={inbox.unreadComments} tone={inbox.unreadComments >= 10 ? "warn" : "neutral"} />
-      {queue && <Stat label="طابور ميتا" value={queue.waiting} tone={queue.waiting >= 15 ? "bad" : queue.waiting >= 8 ? "warn" : "neutral"} />}
+      {queue && <Stat label="محادثات معيّنة" value={queue.waiting} tone={queue.waiting >= 15 ? "bad" : queue.waiting >= 8 ? "warn" : "neutral"} />}
       <Stat label="موظفون نشطون" value={`${activeCount}/${monitored.length}`} tone="good" />
       {criticalAlerts > 0 && <Stat label="تنبيهات حرجة" value={criticalAlerts} tone="bad" />}
       {inbox.unreadMessages >= 25 && (
@@ -73,6 +74,7 @@ export default function TopBar() {
         <IconBtn icon={liteMode ? "🖥️" : "📱"} label={liteMode ? "وضع كامل" : "وضع بسيط"} onClick={() => setLite(!liteMode)} />
         {role === "admin" && <IconBtn icon="⚙️" label="الإعدادات" onClick={() => setShowSettings(true)} />}
         <IconBtn icon="❓" label="جولة" onClick={() => setShowTour(true)} />
+        <IconBtn icon="🚪" label="خروج" onClick={() => logout()} />
       </div>
     </header>
   );

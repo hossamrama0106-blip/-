@@ -10,6 +10,7 @@ export default function Settings() {
   const [sheet, setSheet] = useState("");
   const [ntfy, setNtfy] = useState("");
   const [saved, setSaved] = useState(false);
+  const [cleared, setCleared] = useState(false);
 
   useEffect(() => {
     if (!showSettings) return;
@@ -53,6 +54,20 @@ export default function Settings() {
         <div className="flex items-center gap-3 pt-1">
           <button onClick={save} className="bg-brand-500 hover:bg-brand-400 text-white rounded-lg px-4 py-2 font-medium">حفظ</button>
           {saved && <span className="text-emerald-400 text-sm">تم الحفظ ✓</span>}
+        </div>
+
+        <div className="pt-3 border-t border-ink-700">
+          <div className="text-xs font-bold text-red-400 mb-2">منطقة خطرة</div>
+          <button
+            onClick={() => {
+              if (confirm("تنظيف كل البيانات التشغيلية (محادثات معيّنة/تنبيهات/مخالفات/تقييمات…) مع إبقاء الحسابات؟ لا يمكن التراجع."))
+                api.clearSystem().then(() => { setCleared(true); setTimeout(() => setCleared(false), 2500); }).catch(() => {});
+            }}
+            className="text-sm bg-red-500/15 border border-red-500/50 text-red-300 hover:bg-red-500/25 rounded-lg px-4 py-2"
+          >
+            🧹 تنظيف البيانات الوهمية (إبقاء الحسابات)
+          </button>
+          {cleared && <span className="text-emerald-400 text-sm mr-2">تم التنظيف ✓ — اعمل refresh</span>}
         </div>
       </div>
     </div>

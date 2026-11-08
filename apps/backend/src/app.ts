@@ -275,6 +275,16 @@ app.post("/api/system/reset", async (c) => {
   return c.json({ ok: true, employees: created });
 });
 
+// ---------- تنظيف البيانات التشغيلية الوهمية/القديمة (مدير) — يبقي الحسابات ----------
+app.post("/api/system/clear", async (c) => {
+  const raw = await c.req.json<{ confirm?: string }>().catch(() => ({}) as any);
+  if (raw?.confirm !== "CLEAR") return c.json({ error: "أرسل confirm=CLEAR للتأكيد" }, 400);
+  store.clearOperational();
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "system_clear", details: "تنظيف البيانات التشغيلية (إبقاء الحسابات)", ip: clientIp(c) });
+  return c.json({ ok: true });
+});
+
 // ---------- employees ----------
 app.get("/api/employees", (c) =>
   c.json({
@@ -678,6 +688,7 @@ app.post("/api/alerts/:id/resolve", (c) => {
   const a = store.resolveAlert(c.req.param("id"));
   return a ? c.json(a) : c.json({ error: "not found" }, 404);
 });
+app.post("/api/alerts/clear", (c) => c.json({ ok: true, cleared: store.clearAlerts() }));
 
 // ---------- screenshots ----------
 // عرض اللقطة للواجهة: لو مرفوعة في R2 نرجّع رابطًا موقّعًا في dataUrl (الـ <img> يشتغل زي ما هو)،
