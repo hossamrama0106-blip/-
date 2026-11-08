@@ -8,6 +8,7 @@ import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
 import { signToken, verifyToken, isAdminCode, loginGuard, loginFailed, loginOk } from "./auth";
 import { ValidationError, parse, str, num, oneOf, arr, type Rule } from "./validate";
+import { checkRate } from "./rate";
 import { supabaseEnabled, realtimeConfig } from "./supabase";
 import { r2Enabled, putDataUrl, signedGetUrl } from "./r2";
 import { wahaEnabled, sendText as wahaSendText, sendImage as wahaSendImage } from "./waha";
@@ -70,6 +71,15 @@ app.use("/api/*", async (c, next) => {
   if (!id) return c.json({ error: "unauthorized" }, 401);
   if (!store.isTokenActive(id.id, id.iat)) return c.json({ error: "انتهت الجلسة — سجّل الدخول ثانية" }, 401);
   const m = c.req.method;
+
+  // حدّ معدّل per-employee على مسارات الكتابة — يمنع نفخ الأرقام/الإغراق بطلبات مباشرة بالتوكن المُعاد.
+  // التجاوز غير الطبيعي يرفع تنبيه "نشاط آلي" للإدارة (كشف تلاعب) + يرجّع 429.
+  const rl = checkRate(id.id, path, m);
+  if (!rl.ok) {
+    if (id.role === "employee")
+      store.raiseAlert({ employeeId: id.id, kind: "fake_activity", severity: ViolationSeverity.HIGH, message: `معدل طلبات مرتفع غير طبيعي (${rl.bucket}) — احتمال نشاط آلي/تلاعب` });
+    return c.json({ error: "طلبات كتير بسرعة — بطّئ شوية", retryAfter: rl.retryAfter }, 429);
+  }
 
   const isStaff = id.role === "admin" || id.role === "lead";
 
