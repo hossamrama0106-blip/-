@@ -12,6 +12,7 @@ const ACTION_META: Record<string, { label: string; cls: string }> = {
   flags_set: { label: "رقابة علنية", cls: "bg-amber-600/25 text-amber-300" },
   violation_add: { label: "مخالفة يدوية", cls: "bg-red-600/25 text-red-300" },
   point_add: { label: "نقاط", cls: "bg-indigo-600/25 text-indigo-300" },
+  review_add: { label: "تقييم يدوي", cls: "bg-indigo-600/25 text-indigo-300" },
   command_send: { label: "أمر جهاز", cls: "bg-amber-600/25 text-amber-300" },
   night_mode: { label: "رادار ليلي", cls: "bg-violet-600/25 text-violet-300" },
   settings_update: { label: "إعدادات", cls: "bg-slate-600/30 text-slate-300" },

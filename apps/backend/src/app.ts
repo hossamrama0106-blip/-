@@ -2,7 +2,7 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
-import { ActivityType, Channel, NotificationType, QueuePriority, Role, ViolationSeverity, type LoginResult } from "@khiam/shared";
+import { ActivityType, Channel, NotificationType, QueuePriority, ReplyVerdict, Role, ViolationSeverity, type LoginResult } from "@khiam/shared";
 import { store } from "./store";
 import { hub } from "./realtime";
 import { aiMode, evaluateReply } from "./ai";
@@ -104,7 +104,8 @@ app.use("/api/*", async (c, next) => {
     (path.startsWith("/api/queue/") && (path.endsWith("/assign") || path.endsWith("/skip"))) ||
     path === "/api/comments" ||
     (path === "/api/comments/ingest" && m === "POST") ||
-    (path === "/api/reviews" && !c.req.query("employeeId"));
+    (path === "/api/reviews" && m === "POST") || // كتابة التقييمات = إدارة فقط (يمنع تزوير الموظف لنقاطه/تقييم زملائه)
+    (path === "/api/reviews" && m === "GET" && !c.req.query("employeeId"));
   if (staffOnly && !isStaff) return c.json({ error: "forbidden" }, 403);
 
   if (!isStaff) {
@@ -409,8 +410,25 @@ app.get("/api/reviews", (c) => {
   return c.json(id ? store.reviewsFor(id) : store.reviews.slice(-50).reverse());
 });
 app.post("/api/reviews", async (c) => {
-  const body = await c.req.json();
-  return c.json(store.addReview(body), 201);
+  const data = await body<{ employeeId: string; conversationRef?: string; verdict: string; score: number; aiNotes?: string; sampleText?: string }>(c, {
+    employeeId: str({ max: 64 }),
+    conversationRef: str({ optional: true, max: 200 }),
+    verdict: oneOf(Object.values(ReplyVerdict)),
+    score: num({ int: true, min: 0, max: 100 }),
+    aiNotes: str({ optional: true, max: 1000 }),
+    sampleText: str({ optional: true, max: 2000 }),
+  });
+  const review = store.addReview({
+    employeeId: data.employeeId,
+    conversationRef: data.conversationRef || "—",
+    verdict: data.verdict,
+    score: data.score,
+    aiNotes: data.aiNotes || "",
+    sampleText: data.sampleText || "",
+  });
+  const a = actor(c);
+  store.recordAudit({ actorId: a.id, actorName: a.name, action: "review_add", targetId: data.employeeId, details: `تقييم يدوي: ${data.verdict} (${data.score})`, ip: clientIp(c) });
+  return c.json(review, 201);
 });
 app.get("/api/points", (c) => c.json(store.points));
 app.post("/api/points", async (c) => {

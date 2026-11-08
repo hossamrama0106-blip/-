@@ -89,6 +89,8 @@ function freshLive(employeeId: string): LiveStatus {
     metaFocused: true,
     extensionConnected: false,
     agentConnected: false,
+    lastExtAt: 0,
+    lastAgentAt: 0,
     liveWatching: false,
     spotlight: false,
     superMonitor: false,
@@ -271,8 +273,14 @@ class Store {
     const now = Date.now();
     l.lastHeartbeatAt = now;
     l.online = true;
-    if (patch.extensionConnected !== undefined) l.extensionConnected = patch.extensionConnected;
-    if (patch.agentConnected !== undefined) l.agentConnected = patch.agentConnected;
+    if (patch.extensionConnected !== undefined) {
+      l.extensionConnected = patch.extensionConnected;
+      if (patch.extensionConnected) l.lastExtAt = now; // نبضة إكستنشن حيّة (لكشف قطعه لاحقًا)
+    }
+    if (patch.agentConnected !== undefined) {
+      l.agentConnected = patch.agentConnected;
+      if (patch.agentConnected) l.lastAgentAt = now; // نبضة برنامج حيّة
+    }
     if (patch.typing !== undefined) l.typing = patch.typing;
     if (patch.typingWpm !== undefined) l.typingWpm = patch.typingWpm;
     if (patch.metaFocused !== undefined) l.metaFocused = patch.metaFocused;
@@ -1186,13 +1194,40 @@ class Store {
     for (const e of this.employees) {
       const l = this.getLive(e.id);
       if (l.presence === PresenceState.NOT_STARTED || l.presence === PresenceState.SHIFT_ENDED) continue;
+
+      // اتصال كل قناة من آخر نبضة خاصة بيها (يمنع بقاء "متصل" بعد قفل الإكستنشن طول ما البرنامج شغّال)
+      const extFresh = l.lastExtAt > 0 && now - l.lastExtAt < Thresholds.OFFLINE_MS;
+      const agentFresh = l.lastAgentAt > 0 && now - l.lastAgentAt < Thresholds.OFFLINE_MS;
+      const extWas = l.extensionConnected;
+      l.extensionConnected = extFresh;
+      l.agentConnected = agentFresh;
+      // تنبيه صريح: الإكستنشن اتقطع أثناء الشيفت (القراءة/الطابور بيقفوا) — مش مجرد تغيير لون صامت
+      if (l.presence === PresenceState.WORKING && extWas && !extFresh && l.lastExtAt > 0) {
+        this.raiseAlert({ employeeId: e.id, kind: "ext_offline", severity: ViolationSeverity.HIGH, message: `${e.name}: الإكستنشن اتقطع أثناء الشيفت — قراءة ميتا والطابور متوقفين` });
+      }
+
       const age = now - l.lastHeartbeatAt;
-      if (l.lastHeartbeatAt === 0) continue;
+      // بدأ شيفت وما وصلتش ولا نبضة (ابدأ شيفت من البوب ثم اقفل الإكستنشن/البرنامج)
+      if (l.lastHeartbeatAt === 0) {
+        if (l.presence === PresenceState.WORKING && l.status !== EmployeeStatus.AGENT_DISCONNECTED) {
+          const s = [...this.shifts].reverse().find((x) => x.employeeId === e.id && !x.endedAt);
+          if (s && now - new Date(s.startedAt).getTime() > Thresholds.INTERMITTENT_MS) {
+            l.status = EmployeeStatus.AGENT_DISCONNECTED;
+            hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
+            this.raiseAlert({ employeeId: e.id, kind: "ext_offline", severity: ViolationSeverity.HIGH, message: `${e.name}: بدأ الشيفت بدون اتصال الإكستنشن/البرنامج` });
+          }
+        }
+        continue;
+      }
       if (age > Thresholds.OFFLINE_MS) {
         if (l.online) {
           l.online = false;
           l.status = EmployeeStatus.OFFLINE;
           hub.broadcast(RealtimeEvent.STATUS_CHANGED, l);
+          // انقطاع الاتصال أثناء الشيفت = تنبيه صريح (مرة واحدة عند التحوّل، مش رمادي صامت)
+          if (l.presence === PresenceState.WORKING) {
+            this.raiseAlert({ employeeId: e.id, kind: "ext_offline", severity: ViolationSeverity.HIGH, message: `${e.name}: انقطع الاتصال أثناء الشيفت` });
+          }
         }
       } else if (age > Thresholds.INTERMITTENT_MS) {
         if (l.status !== EmployeeStatus.INTERMITTENT) {

@@ -10,6 +10,7 @@ const KIND_LABEL: Record<string, string> = {
   games: "ألعاب",
   fake_activity: "نشاط وهمي",
   deal_at_risk: "أوردر في خطر",
+  ext_offline: "الإكستنشن مقطوع أثناء الشيفت",
   custom: "تنبيه",
 };
 

@@ -50,6 +50,8 @@ export interface LiveStatus {
   metaFocused: boolean; // هل تبويب العمل هو النشط الآن
   extensionConnected: boolean;
   agentConnected: boolean;
+  lastExtAt: Millis; // آخر نبضة من الإكستنشن (لكشف قطعه أثناء الشيفت)
+  lastAgentAt: Millis; // آخر نبضة من البرنامج (ويندوز)
   liveWatching: boolean; // الإدارة بتتفرج لايف دلوقتي
   spotlight: boolean; // عين الرقابة العلنية مفعّلة
   superMonitor: boolean; // مراقبة فائقة مستمرة (كوضع ليلي خاص بالموظف)
@@ -165,7 +167,7 @@ export interface ChatMessage {
 export interface Alert {
   id: ID;
   employeeId: ID | null;
-  kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "custom";
+  kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "ext_offline" | "custom";
   severity: ViolationSeverity;
   message: string;
   at: ISODate;
