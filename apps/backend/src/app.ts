@@ -132,7 +132,7 @@ app.use("/api/*", async (c, next) => {
     const SELF_POST = new Set([
       "/api/presence", "/api/activity", "/api/shift/start", "/api/shift/end",
       "/api/break/start", "/api/break/end", "/api/auth/consent", "/api/ai/evaluate", "/api/screenshots", "/api/history",
-      "/api/queue/next", "/api/queue/done",
+      "/api/queue/next", "/api/queue/done", "/api/scan",
     ]);
     if (m === "POST" && SELF_POST.has(path)) {
       let body: any = {};
@@ -492,6 +492,31 @@ app.post("/api/comments/ingest", async (c) => {
   const r = store.ingestComments(items);
   const a = actor(c);
   store.recordAudit({ actorId: a.id, actorName: a.name, action: "comments_ingest", details: `رصد ${r.added} تعليق (طابور ${r.enqueued})`, ip: clientIp(c) });
+  return c.json({ ok: true, ...r });
+});
+
+// ---------- وكيل الفحص التلقائي ----------
+// الإكستنشن يبلّغ لقطة كاملة من المشاكل المرصودة حاليًا (تعليق/محادثة بدون رد، تكدّس) مع رابط ولقطة شاشة.
+// الموظف يبلّغ عن نفسه فقط (SELF_POST يفرض employeeId === هويّته).
+const SCAN_KINDS = new Set(["unanswered_comment", "piled_messages", "slow_reply", "idle", "queue_pressure", "custom"]);
+app.post("/api/scan", async (c) => {
+  const raw = await c.req.json<{ employeeId?: string; findings?: any[] }>().catch(() => ({}) as any);
+  const employeeId = String(raw.employeeId || "");
+  if (!employeeId) return c.json({ error: "employeeId required" }, 400);
+  const findings = Array.isArray(raw.findings)
+    ? raw.findings
+        .filter((f) => f && f.key && f.message)
+        .slice(0, 50)
+        .map((f) => ({
+          key: String(f.key).slice(0, 120),
+          kind: (SCAN_KINDS.has(String(f.kind)) ? String(f.kind) : "custom") as any,
+          severity: f.severity === "high" || f.severity === "low" ? String(f.severity) : "medium",
+          message: String(f.message).slice(0, 300),
+          link: f.link ? String(f.link).slice(0, 1000) : null,
+          shotId: f.shotId ? String(f.shotId).slice(0, 64) : null,
+        }))
+    : [];
+  const r = store.reportScan(employeeId, findings);
   return c.json({ ok: true, ...r });
 });
 

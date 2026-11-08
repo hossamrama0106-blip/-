@@ -212,6 +212,7 @@ export const api = {
   clearSystem: () => http<{ ok: boolean }>("/system/clear", { method: "POST", body: JSON.stringify({ confirm: "CLEAR" }) }),
   latestScreenshot: (employeeId: string) =>
     http<{ dataUrl: string; at: string; width: number; height: number } | null>(`/screenshots/latest?employeeId=${encodeURIComponent(employeeId)}`),
+  screenshot: (id: string) => http<{ dataUrl: string; at: string } | { error: string }>(`/screenshots/${encodeURIComponent(id)}`),
   reviewsFor: (employeeId: string) => http<ReviewRow[]>(`/reviews?employeeId=${encodeURIComponent(employeeId)}`),
   setNightMode: (enabled: boolean) =>
     http<{ enabled: boolean }>("/ai/night-mode", { method: "POST", body: JSON.stringify({ enabled }) }),

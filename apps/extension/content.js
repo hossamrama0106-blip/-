@@ -57,6 +57,10 @@
     scrapeAt: 0, // وقت آخر قراءة ناجحة
     names: {}, // id→اسم (لعرض أسماء الشات بدل الأرقام)
     connErr: false, // الخادم مش راد (يظهر تحذير في الشريط)
+    lastUnreadItems: [], // آخر عناصر غير مقروءة (لوكيل الفحص التلقائي)
+    lastUnreadCount: 0, // إجمالي غير المقروء
+    unreadSince: {}, // externalId→وقت أول ظهوره غير مقروء (لحساب مدة الانتظار)
+    hadFindings: false, // كان في مشاكل في آخر فحص (لإرسال لقطة فاضية تحلّها عند اختفائها)
   };
 
   const esc = (s) =>
@@ -802,6 +806,61 @@
       }
     } catch (_) {}
   }
+  // ---------- وكيل الفحص التلقائي: يرصد المشاكل ويبلّغ الإدارة برابط + لقطة شاشة ----------
+  const AUTO = { PILE: 10, CMT_WAIT_MS: 3 * 60000, SLOW_MS: 5 * 60000, MAX_CMT: 5, MAX_SLOW: 3 };
+  // يُستدعى بعد كل قراءة ناجحة: يخزّن غير المقروء ويتتبّع منذ متى كل عنصر منتظر.
+  function recordScan(items, totalUnread) {
+    const unread = (Array.isArray(items) ? items : []).filter((it) => it && it.unread);
+    state.lastUnreadItems = unread;
+    state.lastUnreadCount = typeof totalUnread === "number" && totalUnread >= 0 ? totalUnread : unread.length;
+    const now = Date.now();
+    const fresh = {};
+    for (const it of unread) {
+      const id = it.externalId || it.customerRef;
+      if (!id) continue;
+      fresh[id] = state.unreadSince[id] || now; // احتفظ بأول ظهور؛ المقروء الآن يسقط
+    }
+    state.unreadSince = fresh;
+  }
+  // كل ~45ث: يبني قائمة المشاكل الحالية، يلتقط لقطة واحدة كدليل، ويبعتها للباك (يدمج/يحلّ تلقائيًا).
+  async function autoScan() {
+    if (!state.session) return;
+    const presence = state.live && state.live.presence;
+    if (presence !== "working") return; // أثناء الشيفت فقط
+    if (!(isInboxPage() || isComments())) return; // صفحات العمل فقط
+    if (Date.now() - state.scrapeAt > 90000) return; // لا قراءة حديثة موثوقة → لا تبلّغ (يمنع حلًّا خاطئًا)
+    const now = Date.now();
+    const onComments = isComments();
+    const findings = [];
+    // 1) تكدّس رسائل غير مقروءة (على صفحات الوارد، مش التعليقات)
+    if (!onComments && state.lastUnreadCount >= AUTO.PILE) {
+      findings.push({ key: "pile", kind: "piled_messages", severity: "high", message: `تكدّس: ${state.lastUnreadCount} رسالة غير مقروءة في الوارد`, link: location.href });
+    }
+    // 2) عناصر منتظرة من زمن (تعليق/محادثة بدون رد)
+    const waitMs = onComments ? AUTO.CMT_WAIT_MS : AUTO.SLOW_MS;
+    const waiting = state.lastUnreadItems
+      .map((it) => ({ it, since: state.unreadSince[it.externalId || it.customerRef] || now }))
+      .filter((x) => now - x.since >= waitMs)
+      .sort((a, b) => a.since - b.since)
+      .slice(0, onComments ? AUTO.MAX_CMT : AUTO.MAX_SLOW);
+    for (const w of waiting) {
+      const mins = Math.max(1, Math.round((now - w.since) / 60000));
+      const ref = String(w.it.customerRef || "عنصر").slice(0, 40);
+      const id = w.it.externalId || ref;
+      if (onComments) findings.push({ key: "cmt:" + id, kind: "unanswered_comment", severity: "medium", message: `تعليق بدون رد منذ ~${mins}د: ${ref}`, link: w.it.link || location.href });
+      else findings.push({ key: "slow:" + id, kind: "slow_reply", severity: "medium", message: `محادثة بدون رد منذ ~${mins}د: ${ref}`, link: w.it.link || location.href });
+    }
+    if (!findings.length) {
+      if (state.hadFindings) { await send("scanReport", { findings: [] }); state.hadFindings = false; } // اتحلّت → بلّغ فاضي ليختفي التنبيه
+      return;
+    }
+    state.hadFindings = true;
+    let shotId = null;
+    try { const r = await send("capture"); if (r && r.ok && r.data) shotId = r.data.shotId || null; } catch (_) {}
+    for (const f of findings) f.shotId = shotId;
+    await send("scanReport", { findings });
+  }
+
   // ---------- المصدر الأساسي: جسر React fiber (inject.js في main world) ----------
   // بيانات المحادثات (المعرّف/غير-المقروء/الاسم/المعاينة/القناة) من props.thread — موثوقة وثابتة.
   let lastFiberAt = 0;
@@ -812,6 +871,7 @@
     state.scrapeAt = Date.now(); // قراءة ناجحة (صحة القارئ)
     const items = Array.isArray(data.items) ? data.items : [];
     const unreadItems = items.filter((it) => it.unread); // للطابور: غير المقروء فقط (الجديد/غير المجاب عليه)
+    recordScan(items, data.unread); // وكيل الفحص التلقائي
     const comments = isComments() ? unreadItems.length : 0;
     send("inboxSync", { unreadMessages: Math.max(0, data.unread || 0), unreadComments: comments });
     if (unreadItems.length) send("queueSync", { items: unreadItems });
@@ -837,6 +897,7 @@
     state.scrapeRows = d.rowCount || d.items.length || 0;
     state.scrapeAt = Date.now(); // قراءة DOM ناجحة (صحة القارئ)
     const unreadItems = d.items.filter((it) => it.unread);
+    recordScan(d.items, d.unread); // وكيل الفحص التلقائي
     const comments = isComments() ? unreadItems.length : 0;
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: comments });
     if (unreadItems.length) send("queueSync", { items: unreadItems });
@@ -901,6 +962,7 @@
     state.scrapeRows = d.items.length || 0;
     state.scrapeAt = Date.now(); // قراءة واتساب ناجحة (صحة القارئ)
     const unreadItems = d.items.filter((it) => it.unread);
+    recordScan(d.items, d.unread); // وكيل الفحص التلقائي
     send("inboxSync", { unreadMessages: Math.max(0, d.unread || 0), unreadComments: 0 });
     if (unreadItems.length) send("queueSync", { items: unreadItems });
   }
@@ -1013,6 +1075,12 @@
     // واتساب ويب: قراءة DOM دفاعية (يتخطّى بأمان لو البنية مش مفهومة)
     setTimeout(scrapeAndSyncOther, 5000);
     setInterval(scrapeAndSyncOther, 20000);
+  }
+
+  // وكيل الفحص التلقائي: يقلّب في المرصود كل ~45ث وينبّه الإدارة (رابط + لقطة) — ميتا/انستجرام/واتساب
+  if (SITE === "meta" || SITE === "whatsapp" || SITE === "instagram") {
+    setTimeout(autoScan, 18000);
+    setInterval(autoScan, 45000);
   }
 
   // إعادة الحقن لو الـ DOM اتغيّر بالكامل

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api } from "../api";
@@ -12,8 +13,35 @@ const KIND_LABEL: Record<string, string> = {
   deal_at_risk: "أوردر في خطر",
   ext_offline: "الإكستنشن مقطوع أثناء الشيفت",
   scrape_fail: "قراءة الإنبوكس متوقفة",
+  unanswered_comment: "تعليق بدون رد",
+  piled_messages: "تكدّس رسائل",
+  slow_reply: "محادثة منتظرة",
   custom: "تنبيه",
 };
+
+// لقطة دليل وكيل الفحص — تُحمَّل كسولًا من /screenshots/:id وتُفتح كاملة بالضغط
+function AlertShot({ id }: { id: string }) {
+  const [src, setSrc] = useState<string | null>(null);
+  const [fail, setFail] = useState(false);
+  useEffect(() => {
+    let on = true;
+    api
+      .screenshot(id)
+      .then((r) => { if (on && r && "dataUrl" in r && r.dataUrl) setSrc(r.dataUrl); else if (on) setFail(true); })
+      .catch(() => on && setFail(true));
+    return () => { on = false; };
+  }, [id]);
+  if (fail || !src) return null;
+  return (
+    <img
+      src={src}
+      alt="لقطة دليل"
+      onClick={() => window.open(src, "_blank")}
+      className="mt-2 w-full max-h-40 object-cover object-top rounded-lg border border-ink-800 cursor-zoom-in"
+      title="اضغط للتكبير"
+    />
+  );
+}
 
 export default function AlertsRail() {
   const { alerts, violations, employees, select } = useDash(useShallow((s) => ({
@@ -54,6 +82,7 @@ export default function AlertsRail() {
                   <span className="text-[11px] text-slate-500">{timeAgo(a.at)}</span>
                 </div>
                 <div className="text-slate-200 mt-1">{a.message}</div>
+                {a.shotId && <AlertShot id={a.shotId} />}
                 <div className="flex gap-2 mt-2">
                   {a.employeeId && (
                     <button onClick={() => select(a.employeeId)} className="text-xs text-brand-400 hover:underline">

@@ -169,3 +169,39 @@ test("comments: ingest يضيف للطابور بقناة التعليقات و�
   assert.equal(inQueue.length, 2);
   assert.ok(inQueue.some((t) => t.priority === "vip")); // نية الشراء دخلت vip
 });
+
+// ---------- وكيل الفحص التلقائي ----------
+test("scan: reportScan يرفع تنبيهًا، يحدّثه بنفس المفتاح، ويحلّه تلقائيًا عند اختفائه", () => {
+  // نظّف أي تنبيهات سابقة لنفس الموظف
+  const nowIso = new Date().toISOString();
+  for (const a of store.alerts) if (a.employeeId === "emp_002" && !a.resolvedAt) a.resolvedAt = nowIso;
+
+  const r1 = store.reportScan("emp_002", [
+    { key: "pile", kind: "piled_messages", severity: "high", message: "تكدّس: 12 رسالة", link: "https://x" },
+  ]);
+  assert.equal(r1.raised, 1);
+  const open = store.alerts.find((a) => a.scanKey === "emp_002:pile" && !a.resolvedAt);
+  assert.ok(open);
+  assert.equal(open!.kind, "piled_messages");
+  assert.equal(open!.link, "https://x");
+
+  // نفس المفتاح → تحديث للتنبيه القائم، مش تنبيه جديد
+  const r2 = store.reportScan("emp_002", [
+    { key: "pile", kind: "piled_messages", severity: "high", message: "تكدّس: 15 رسالة", shotId: "shot_1" },
+  ]);
+  assert.equal(r2.raised, 0);
+  assert.equal(r2.updated, 1);
+  assert.equal(open!.message, "تكدّس: 15 رسالة");
+  assert.equal(open!.shotId, "shot_1");
+
+  // تقرير فاضي والمشكلة لسه جديدة (<90ث) → لا حلّ (مهلة سماح)
+  const r3 = store.reportScan("emp_002", []);
+  assert.equal(r3.resolved, 0);
+  assert.ok(!open!.resolvedAt);
+
+  // اجعلها قديمة ثم تقرير فاضي → تُحَلّ تلقائيًا (الرسالة اتردّ عليها)
+  open!.at = new Date(Date.now() - 2 * 60000).toISOString();
+  const r4 = store.reportScan("emp_002", []);
+  assert.equal(r4.resolved, 1);
+  assert.ok(open!.resolvedAt);
+});

@@ -169,10 +169,24 @@ export interface ChatMessage {
 export interface Alert {
   id: ID;
   employeeId: ID | null;
-  kind: "idle" | "queue_pressure" | "cherry_pick" | "games" | "fake_activity" | "deal_at_risk" | "ext_offline" | "scrape_fail" | "custom";
+  kind:
+    | "idle"
+    | "queue_pressure"
+    | "cherry_pick"
+    | "games"
+    | "fake_activity"
+    | "deal_at_risk"
+    | "ext_offline"
+    | "scrape_fail"
+    | "unanswered_comment" // وكيل الفحص: تعليق بدون رد
+    | "piled_messages" // وكيل الفحص: تكدّس رسائل غير مقروءة
+    | "slow_reply" // وكيل الفحص: محادثة منتظرة من زمن
+    | "custom";
   severity: ViolationSeverity;
   message: string;
   link?: string | null; // رابط المحادثة/التعليق المرتبط (يظهر كزر في التنبيه)
+  shotId?: string | null; // معرّف لقطة الشاشة الدليل (وكيل الفحص التلقائي) — تُعرض من /api/screenshots/:id
+  scanKey?: string | null; // مفتاح دمج ثابت لتنبيهات الفحص (يمنع التكرار ويسمح بالحل التلقائي عند الرد)
   at: ISODate;
   resolvedAt: ISODate | null;
 }

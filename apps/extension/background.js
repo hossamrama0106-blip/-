@@ -224,6 +224,20 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await api("/api/inbox", "POST", { unreadMessages: msg.data.unreadMessages, unreadComments: msg.data.unreadComments }) });
         case "queueSync":
           return sendResponse({ ok: true, data: await api("/api/queue/sync", "POST", { items: (msg.data && msg.data.items) || [] }) });
+        case "capture": {
+          // وكيل الفحص: لقطة للتبويب المرئي كدليل، تُرفع للباك وتُرجّع معرّفها (أفضل جهد — تفشل بهدوء)
+          try {
+            const winId = _sender && _sender.tab ? _sender.tab.windowId : undefined;
+            const dataUrl = await chrome.tabs.captureVisibleTab(winId, { format: "jpeg", quality: 50 });
+            if (!dataUrl || dataUrl.length > 680000) return sendResponse({ ok: false, error: "capture_unavailable" });
+            const shot = await api("/api/screenshots", "POST", { employeeId: reqId(), dataUrl, isViolation: false });
+            return sendResponse({ ok: true, data: { shotId: shot && shot.id } });
+          } catch (e) {
+            return sendResponse({ ok: false, error: String((e && e.message) || e) });
+          }
+        }
+        case "scanReport":
+          return sendResponse({ ok: true, data: await api("/api/scan", "POST", { employeeId: reqId(), findings: (msg.data && msg.data.findings) || [] }) });
         case "evaluate":
           return sendResponse({ ok: true, data: await api("/api/ai/evaluate", "POST", { employeeId: reqId(), conversationRef: msg.data.conversationRef, messages: msg.data.messages, transcript: msg.data.transcript }) });
         case "openPopup":

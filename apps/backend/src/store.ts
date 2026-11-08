@@ -770,6 +770,65 @@ class Store {
     return n;
   }
 
+  /**
+   * وكيل الفحص التلقائي: الإكستنشن يبعت لقطة كاملة من المشاكل المرصودة حاليًا على صفحة الموظف
+   * (تعليق/محادثة بدون رد، تكدّس رسائل) مع رابط ولقطة شاشة. الدمج بمفتاح ثابت (scanKey) يمنع
+   * التكرار ويحدّث التنبيه القائم؛ وأي تنبيه فحص قديم لنفس الموظف لم يُبلَّغ عنه الآن يُحَلّ تلقائيًا
+   * بعد مهلة سماح (الرسالة اتردّ عليها → التنبيه يختفي لوحده).
+   */
+  reportScan(
+    employeeId: string,
+    findings: Array<{ key: string; kind: Alert["kind"]; severity?: string; message: string; link?: string | null; shotId?: string | null }>,
+  ): { raised: number; updated: number; resolved: number } {
+    const now = Date.now();
+    const prefix = employeeId + ":";
+    const seen = new Set<string>();
+    let raised = 0;
+    let updated = 0;
+    for (const f of findings || []) {
+      if (!f || !f.key || !f.message) continue;
+      const scanKey = prefix + f.key;
+      seen.add(scanKey);
+      const open = this.alerts.find((a) => !a.resolvedAt && a.scanKey === scanKey);
+      if (open) {
+        open.message = f.message;
+        open.at = nowIso();
+        if (f.link) open.link = f.link;
+        if (f.shotId) open.shotId = f.shotId;
+        if (f.severity) open.severity = f.severity as Alert["severity"];
+        updated++;
+        hub.broadcast(RealtimeEvent.ALERT, open);
+      } else {
+        const a: Alert = {
+          id: uid("alert"),
+          employeeId,
+          kind: f.kind || "custom",
+          severity: (f.severity as Alert["severity"]) ?? ViolationSeverity.MEDIUM,
+          message: f.message,
+          link: f.link ?? null,
+          shotId: f.shotId ?? null,
+          scanKey,
+          at: nowIso(),
+          resolvedAt: null,
+        };
+        this.alerts.push(a);
+        raised++;
+        hub.broadcast(RealtimeEvent.ALERT, a);
+      }
+    }
+    // حلّ تلقائي: تنبيهات فحص لهذا الموظف لم ترد في اللقطة الحالية (وعمرها > 90ث حتى لا نحلّ المُنشأ للتوّ)
+    let resolved = 0;
+    for (const a of this.alerts) {
+      if (a.resolvedAt || !a.scanKey || !a.scanKey.startsWith(prefix)) continue;
+      if (seen.has(a.scanKey)) continue;
+      if (now - new Date(a.at).getTime() < 90 * 1000) continue;
+      a.resolvedAt = nowIso();
+      resolved++;
+      hub.broadcast(RealtimeEvent.ALERT, a);
+    }
+    return { raised, updated, resolved };
+  }
+
   // ---------- ai / reviews / night radar ----------
   reviewsFor(employeeId: string, limit = 12): ReplyReview[] {
     return this.reviews.filter((r) => r.employeeId === employeeId).slice(-limit).reverse();
