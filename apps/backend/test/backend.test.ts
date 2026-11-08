@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { signToken, verifyToken } from "../src/auth";
 import { evaluateLocal, classifyComment } from "../src/ai";
 import { store } from "../src/store";
+import { telegramEnabled, alertText, tgSend } from "../src/telegram";
 
 // ---------- auth ----------
 test("auth: توكن صحيح يُقرأ ويرجّع الهوية", () => {
@@ -204,4 +205,34 @@ test("scan: reportScan يرفع تنبيهًا، يحدّثه بنفس المف�
   const r4 = store.reportScan("emp_002", []);
   assert.equal(r4.resolved, 1);
   assert.ok(open!.resolvedAt);
+});
+
+// ---------- تيليجرام ----------
+test("telegram: نائم بدون توكن، alertText يصيغ التنبيه، وtgSend يضرب الـ API الصحيح", async () => {
+  delete process.env.TELEGRAM_BOT_TOKEN;
+  delete process.env.TELEGRAM_CHAT_ID;
+  assert.equal(telegramEnabled(), false);
+
+  const txt = alertText({ id: "a1", employeeId: null, kind: "ext_offline", severity: "high", message: "اتقطع فجأة", link: "https://x/y", at: new Date().toISOString(), resolvedAt: null } as any);
+  assert.match(txt, /الإكستنشن مقطوع/);
+  assert.match(txt, /اتقطع فجأة/);
+  assert.match(txt, /🔗/);
+
+  process.env.TELEGRAM_BOT_TOKEN = "T123";
+  process.env.TELEGRAM_CHAT_ID = "C456";
+  assert.equal(telegramEnabled(), true);
+  const orig = globalThis.fetch;
+  let cap: any = null;
+  (globalThis as any).fetch = async (url: string, init: any) => { cap = { url, body: JSON.parse(init.body) }; return { ok: true } as any; };
+  try {
+    const ok = await tgSend("مرحبا");
+    assert.equal(ok, true);
+    assert.match(cap.url, /api\.telegram\.org\/botT123\/sendMessage/);
+    assert.equal(cap.body.chat_id, "C456");
+    assert.equal(cap.body.text, "مرحبا");
+  } finally {
+    globalThis.fetch = orig;
+    delete process.env.TELEGRAM_BOT_TOKEN;
+    delete process.env.TELEGRAM_CHAT_ID;
+  }
 });

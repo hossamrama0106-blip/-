@@ -6,6 +6,7 @@ import { store } from "./store";
 import { startSimulator } from "./simulator";
 import { startPersistence } from "./persistence";
 import { commentsEnabled, fetchComments, commentsPollMs } from "./comments";
+import { startTelegram } from "./telegram";
 
 const PORT = Number(process.env.PORT ?? 8787);
 
@@ -13,6 +14,9 @@ async function main() {
   // ثبات البيانات: حمّل اللقطة (Supabase لو مربوط، وإلا الملف) قبل أي كتابة — عشان الحفظ
   // الدوري ما يدهسش اللقطة السحابية ببيانات البذرة قبل ما التحميل يخلص.
   await startPersistence();
+
+  // بوت تيليجرام: تنبيهات حرجة فورية + ملخص يومي (نائم بدون TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID)
+  startTelegram();
 
   // حلقة إعادة حساب الحالات والتنبيهات
   setInterval(() => store.tick(), 5000);

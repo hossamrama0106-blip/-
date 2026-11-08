@@ -119,6 +119,7 @@ class Store {
   notifications: NotificationItem[] = [];
   chat: ChatMessage[] = [];
   alerts: Alert[] = [];
+  private alertSinks: Array<(a: Alert) => void> = []; // مستمعو التنبيهات الجديدة (تيليجرام…) — وقت التشغيل فقط، لا يُسلسَل
   screenshots: Screenshot[] = [];
   nightMode = false;
   timeline: TimelineEvent[] = [];
@@ -732,6 +733,15 @@ class Store {
   }
 
   // ---------- alerts ----------
+  /** سجّل مستمعًا يُستدعى عند كل تنبيه جديد (لإشعارات خارجية مثل تيليجرام — يفصل الـ store عن الخدمة). */
+  onNewAlert(fn: (a: Alert) => void): void {
+    this.alertSinks.push(fn);
+  }
+  private emitNewAlert(a: Alert): void {
+    for (const fn of this.alertSinks) {
+      try { fn(a); } catch { /* مستمع فشل لا يُسقِط رفع التنبيه */ }
+    }
+  }
   raiseAlert(input: { employeeId: string | null; kind: Alert["kind"]; severity?: string; message: string; link?: string | null }): Alert {
     // منع التكرار لنفس النوع والموظف خلال دقيقتين
     const recent = this.alerts.find(
@@ -754,6 +764,7 @@ class Store {
     };
     this.alerts.push(a);
     hub.broadcast(RealtimeEvent.ALERT, a);
+    this.emitNewAlert(a);
     return a;
   }
   resolveAlert(id: string): Alert | null {
@@ -814,6 +825,7 @@ class Store {
         this.alerts.push(a);
         raised++;
         hub.broadcast(RealtimeEvent.ALERT, a);
+        this.emitNewAlert(a);
       }
     }
     // حلّ تلقائي: تنبيهات فحص لهذا الموظف لم ترد في اللقطة الحالية (وعمرها > 90ث حتى لا نحلّ المُنشأ للتوّ)

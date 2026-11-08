@@ -37,5 +37,10 @@ services:
         sync: false
       - key: R2_BUCKET
         value: khiam-screenshots
+      # بوت تيليجرام للتنبيهات الفورية (اختياري) — نائم بدونهما. أنشئ بوت من @BotFather.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_CHAT_ID
+        sync: false
       # اختياري: TZ_OFFSET_MINUTES (افتراضي 120)، RATE_* (شوف .env.example)
       # ملاحظة: لا تضع PORT — Render يحقنه تلقائيًا والباك يقرأه.
