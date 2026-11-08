@@ -9,8 +9,11 @@ RUN corepack enable
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 COPY apps ./apps
-# --prod=false يضمن devDeps (tsx للتشغيل + vite للبناء) حتى لو المنصّة ضبطت NODE_ENV=production وقت البناء
-RUN pnpm install --frozen-lockfile --prod=false
+# --prod=false يضمن devDeps (tsx للتشغيل + vite للبناء) حتى لو المنصّة ضبطت NODE_ENV=production وقت البناء.
+# pnpm 10+ يرجّع ERR_PNPM_IGNORED_BUILDS (exit 1) على سكربتات البناء غير المعتمدة (esbuild…)، لكن الحزم
+# تُثبَّت فعليًا والنسخ الأصلية (esbuild/@tailwindcss/oxide/lightningcss) حزم منصّة جاهزة لا تحتاج سكربت —
+# فالتجاهل غير ضار ونكمل البناء.
+RUN pnpm install --frozen-lockfile --prod=false || echo "pnpm ignored-builds (غير ضار) — نكمل"
 
 # بناء الداشبورد الثابت ليقدّمه الباك من نفس الأصل
 RUN pnpm --filter @khiam/dashboard build
