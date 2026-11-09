@@ -80,7 +80,13 @@ export function evaluateLocal(input: EvalInput): EvalResult {
 }
 
 // ---------- تصنيف تعليقات (بوت التعليقات) ----------
-const ANGER = ["وحش", "زفت", "نصب", "نصابين", "احتيال", "زعلان", "غاضب", "سيئ", "سيء", "تأخير", "متأخر", "فين طلبي", "مردّيتوش", "مردتوش", "مبترّدوش", "شكوى", "بلاغ", "زباله", "زبالة", "خيبة", "وحشين"];
+const ANGER = ["وحش", "زفت", "نصب", "نصابين", "احتيال", "زعلان", "غاضب", "سيئ", "سيء", "تأخير", "متأخر", "فين طلبي", "مردّيتوش", "مردتوش", "مبترّدوش", "شكوى", "بلاغ", "زباله", "زبالة", "خيبة", "وحشين", "غلط", "مش عايز", "وجع", "مقرف", "تعبان من", "هبلّغ", "هرجّع", "استرجاع", "محامي"];
+
+/** هل نص العميل يحمل غضبًا/شكوى حادة؟ (كشف فوري محلي — لتنبيه تدخّل المدير). */
+export function isAngry(text: string): boolean {
+  const t = (text || "").toLowerCase();
+  return ANGER.some((k) => t.includes(k));
+}
 
 export interface CommentClass {
   priority: "normal" | "high" | "vip";
@@ -92,7 +98,7 @@ export interface CommentClass {
 export function classifyComment(text: string): CommentClass {
   const t = (text || "").trim();
   if (BUYING.some((k) => t.includes(k))) return { priority: "vip", intent: "نية شراء", sentiment: "pos" };
-  if (ANGER.some((k) => t.includes(k))) return { priority: "high", intent: "شكوى/غضب", sentiment: "neg" };
+  if (isAngry(t)) return { priority: "high", intent: "شكوى/غضب", sentiment: "neg" };
   if (QUESTION.some((k) => t.includes(k))) return { priority: "high", intent: "استفسار", sentiment: "neu" };
   return { priority: "normal", intent: "تعليق", sentiment: "neu" };
 }

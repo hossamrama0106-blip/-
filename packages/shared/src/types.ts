@@ -181,6 +181,7 @@ export interface Alert {
     | "unanswered_comment" // وكيل الفحص: تعليق بدون رد
     | "piled_messages" // وكيل الفحص: تكدّس رسائل غير مقروءة
     | "slow_reply" // وكيل الفحص: محادثة منتظرة من زمن
+    | "angry_customer" // عميل غاضب/شكوى حادة — تدخّل المدير فورًا
     | "custom";
   severity: ViolationSeverity;
   message: string;

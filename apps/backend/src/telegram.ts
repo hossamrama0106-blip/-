@@ -43,10 +43,11 @@ const KIND_AR: Record<string, string> = {
   unanswered_comment: "تعليق بدون رد",
   piled_messages: "تكدّس رسائل",
   slow_reply: "محادثة منتظرة",
+  angry_customer: "عميل غاضب",
   custom: "تنبيه",
 };
 // الحرجة فقط تروح للموبايل (مش كل تنبيه صغير يزنّ)
-const CRITICAL = new Set(["ext_offline", "scrape_fail", "piled_messages", "deal_at_risk", "fake_activity", "cherry_pick"]);
+const CRITICAL = new Set(["ext_offline", "scrape_fail", "piled_messages", "deal_at_risk", "fake_activity", "cherry_pick", "angry_customer"]);
 
 export function alertText(a: Alert): string {
   const emo = a.severity === "high" ? "🔴" : a.severity === "low" ? "🟡" : "🟠";

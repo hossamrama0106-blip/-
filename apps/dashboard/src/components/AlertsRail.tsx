@@ -16,6 +16,7 @@ const KIND_LABEL: Record<string, string> = {
   unanswered_comment: "تعليق بدون رد",
   piled_messages: "تكدّس رسائل",
   slow_reply: "محادثة منتظرة",
+  angry_customer: "😠 عميل غاضب",
   custom: "تنبيه",
 };
 

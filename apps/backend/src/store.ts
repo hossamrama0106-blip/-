@@ -39,7 +39,7 @@ import { hub } from "./realtime";
 import { notifyNtfy, pushViolationToSheet } from "./integrations";
 import { broadcastCommand } from "./supabase";
 import { hashPassword, verifyPassword } from "./auth";
-import { classifyComment } from "./ai";
+import { classifyComment, isAngry } from "./ai";
 
 interface Config {
   googleSheetWebhook: string;
@@ -767,6 +767,30 @@ class Store {
     this.emitNewAlert(a);
     return a;
   }
+  /** عميل غاضب/شكوى حادة → تنبيه فوري للمدير (يروح تيليجرام عبر onNewAlert). دمج لكل محادثة/تعليق لمدة ساعة. */
+  raiseAngryAlert(input: { ref: string; text: string; link?: string | null; channelLabel?: string }): Alert | null {
+    const ref = String(input.ref || "").slice(0, 80);
+    if (!ref) return null;
+    const key = "angry:" + ref;
+    const open = this.alerts.find((a) => !a.resolvedAt && a.scanKey === key && Date.now() - new Date(a.at).getTime() < 60 * 60 * 1000);
+    if (open) return null; // نفس المحادثة اتنبّه عليها خلال ساعة — ما تكررش
+    const where = input.channelLabel ? ` (${input.channelLabel})` : "";
+    const a: Alert = {
+      id: uid("alert"),
+      employeeId: null,
+      kind: "angry_customer",
+      severity: ViolationSeverity.HIGH,
+      message: `😠 عميل غاضب${where}: ${String(input.text || "").slice(0, 140)}`,
+      link: input.link ?? null,
+      scanKey: key,
+      at: nowIso(),
+      resolvedAt: null,
+    };
+    this.alerts.push(a);
+    hub.broadcast(RealtimeEvent.ALERT, a);
+    this.emitNewAlert(a);
+    return a;
+  }
   resolveAlert(id: string): Alert | null {
     const a = this.alerts.find((x) => x.id === id);
     if (!a) return null;
@@ -973,6 +997,7 @@ class Store {
   ): { added: number; skipped: number; stats: ReturnType<Store["queueStats"]> } {
     let added = 0;
     let skipped = 0;
+    const CH_AR: Record<string, string> = { messenger: "ماسنجر", instagram: "انستجرام", whatsapp: "واتساب", comments: "تعليق" };
     const activeExt = new Set(
       this.queue
         .filter((t) => (t.status === QueueStatus.WAITING || t.status === QueueStatus.ASSIGNED) && t.externalId)
@@ -985,6 +1010,10 @@ class Store {
       this.enqueueTask({ channel: it.channel, customerRef: it.customerRef, preview: it.preview, link: it.link ?? null, priority: it.priority, externalId: ext });
       if (ext) activeExt.add(ext);
       added++;
+      // عميل غاضب في رسالة جديدة بالوارد → تنبيه فوري للمدير (+ تيليجرام)
+      if (isAngry(it.preview || "")) {
+        this.raiseAngryAlert({ ref: ext || it.customerRef, text: `${it.customerRef}: ${it.preview || ""}`, link: it.link ?? null, channelLabel: CH_AR[it.channel || ""] || "رسالة" });
+      }
     }
     return { added, skipped, stats: this.queueStats() };
   }
@@ -1278,6 +1307,10 @@ class Store {
     }
     this.comments.unshift(item);
     if (this.comments.length > 300) this.comments.length = 300;
+    // عميل غاضب/شكوى حادة في تعليق → تنبيه فوري للمدير (+ تيليجرام)
+    if (cls.sentiment === "neg") {
+      this.raiseAngryAlert({ ref: ext, text: `${input.from ? input.from + ": " : ""}${input.text}`, link: input.link ?? null, channelLabel: "تعليق" });
+    }
     return { added: true, item };
   }
 

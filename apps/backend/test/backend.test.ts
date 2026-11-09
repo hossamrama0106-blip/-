@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { signToken, verifyToken } from "../src/auth";
-import { evaluateLocal, classifyComment } from "../src/ai";
+import { evaluateLocal, classifyComment, isAngry } from "../src/ai";
 import { store } from "../src/store";
 import { telegramEnabled, alertText, tgSend } from "../src/telegram";
 
@@ -205,6 +205,30 @@ test("scan: reportScan يرفع تنبيهًا، يحدّثه بنفس المف�
   const r4 = store.reportScan("emp_002", []);
   assert.equal(r4.resolved, 1);
   assert.ok(open!.resolvedAt);
+});
+
+// ---------- عميل غاضب ----------
+test("angry: كشف الغضب يرفع angry_customer من التعليق والوارد ويمنع التكرار", () => {
+  assert.equal(isAngry("الطلب متأخر وفين فلوسي"), true);
+  assert.equal(isAngry("شكرًا جزيلًا على الخدمة"), false);
+
+  for (const a of store.alerts) if (a.kind === "angry_customer" && !a.resolvedAt) a.resolvedAt = new Date().toISOString();
+  store.comments.length = 0;
+
+  // تعليق غاضب → تنبيه
+  store.ingestComments([{ id: "angry1", text: "النصب ده! هبلّغ عنكم", from: "عميل زعلان", link: "https://x/c" }]);
+  const fromCmt = store.alerts.find((a) => a.kind === "angry_customer" && a.scanKey === "angry:cmt_angry1" && !a.resolvedAt);
+  assert.ok(fromCmt);
+  assert.match(fromCmt!.message, /عميل غاضب/);
+  assert.equal(fromCmt!.link, "https://x/c");
+
+  // نفس المحادثة تاني خلال ساعة → لا تنبيه مكرر
+  assert.equal(store.raiseAngryAlert({ ref: "cmt_angry1", text: "تاني", link: null }), null);
+
+  // رسالة وارد غاضبة → تنبيه كمان
+  const r = store.syncQueue([{ externalId: "th_angry", channel: "whatsapp", customerRef: "أحمد", preview: "تأخير وزفت ومش راضي", link: "https://w/1" }]);
+  assert.ok(r.added >= 1);
+  assert.ok(store.alerts.some((a) => a.kind === "angry_customer" && a.scanKey === "angry:th_angry" && !a.resolvedAt));
 });
 
 // ---------- تيليجرام ----------
