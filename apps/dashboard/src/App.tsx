@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "./store";
+import { useCustomize, type PanelKey } from "./lib/customize";
 import { STATUS_META } from "./lib/ui";
 import { api } from "./api";
 import Login from "./components/Login";
@@ -54,6 +55,7 @@ function FullDashboard() {
     live: s.live,
     leaderboard: s.leaderboard,
   })));
+  const { hidden, order } = useCustomize(useShallow((s) => ({ hidden: s.hidden, order: s.order })));
   const [showAdd, setShowAdd] = useState(false);
 
   // ترتيب: المشاكل أولاً (إدارة بالاستثناء) — موظفون فقط (استبعاد المدير/القائد من المراقبة)
@@ -67,8 +69,26 @@ function FullDashboard() {
 
   const rowFor = (id: string) => leaderboard?.rows.find((r) => r.employeeId === id);
 
+  // لوحات العمود الأيسر — تُعرَض حسب الترتيب والإخفاء المخصّصين من الإعدادات
+  const renderPanel = (key: PanelKey) => {
+    if (hidden.includes(key)) return null;
+    if (key === "queue") return <QueueBoard key="queue" />;
+    if (key === "team")
+      return (
+        <div key="team" className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3">
+          {ordered.map((emp) => (
+            <EmployeeCard key={emp.id} emp={emp} live={live[emp.id]} row={rowFor(emp.id)} />
+          ))}
+        </div>
+      );
+    if (key === "leaderboard") return <Leaderboard key="leaderboard" />;
+    return null;
+  };
+
+  const showAlerts = !hidden.includes("alerts");
+
   return (
-    <div className="p-5 grid grid-cols-1 xl:grid-cols-[1fr_340px] gap-5">
+    <div className={`p-5 grid grid-cols-1 gap-5 ${showAlerts ? "xl:grid-cols-[1fr_340px]" : ""}`}>
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <h1 className="text-lg font-bold text-white">الفريق المباشر</h1>
@@ -77,20 +97,14 @@ function FullDashboard() {
           </button>
         </div>
 
-        <QueueBoard />
+        {order.map(renderPanel)}
+      </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3">
-          {ordered.map((emp) => (
-            <EmployeeCard key={emp.id} emp={emp} live={live[emp.id]} row={rowFor(emp.id)} />
-          ))}
+      {showAlerts && (
+        <div className="xl:sticky xl:top-20 h-fit">
+          <AlertsRail />
         </div>
-
-        <Leaderboard />
-      </div>
-
-      <div className="xl:sticky xl:top-20 h-fit">
-        <AlertsRail />
-      </div>
+      )}
 
       {showAdd && <AddEmployee onClose={() => setShowAdd(false)} />}
     </div>
