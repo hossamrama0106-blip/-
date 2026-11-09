@@ -439,6 +439,25 @@ app.get("/api/leaderboard", (c) => {
   return c.json(store.leaderboard(date));
 });
 
+// إحصائيات الموظف نفسه + ترتيبه + خريطة أسماء الفريق (للشات) — متاح للموظف (مش إدارة فقط)
+app.get("/api/me/stats", (c) => {
+  const id = verifyToken(bearer(c));
+  if (!id) return c.json({ error: "unauthorized" }, 401);
+  const lb = store.leaderboard();
+  const rows = lb.rows;
+  const sorted = [...rows].sort((a, b) => b.points * 10 + b.msgs + b.orders * 3 - (a.points * 10 + a.msgs + a.orders * 3));
+  const idx = sorted.findIndex((x) => x.employeeId === id.id);
+  const me = rows.find((x) => x.employeeId === id.id) || null;
+  const names: Record<string, string> = {};
+  for (const r of rows) names[r.employeeId] = r.name;
+  return c.json({
+    stats: me ? { msgs: me.msgs, comments: me.comments, orders: me.orders, points: me.points, tasksDone: me.tasksDone } : null,
+    rank: idx >= 0 ? idx + 1 : null,
+    total: rows.length,
+    names,
+  });
+});
+
 // ---------- reviews / points ----------
 app.get("/api/reviews", (c) => {
   const id = c.req.query("employeeId");

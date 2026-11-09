@@ -216,6 +216,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           return sendResponse({ ok: true, data: await api("/api/chat", "POST", { from: reqId(), to: msg.data.to || "team", body: msg.data.body }) });
         case "leaderboard":
           return sendResponse({ ok: true, data: await api("/api/leaderboard") });
+        case "myStats":
+          return sendResponse({ ok: true, data: await api("/api/me/stats") });
         case "queueNext":
           return sendResponse({ ok: true, data: await api("/api/queue/next", "POST", { employeeId: reqId() }) });
         case "queueDone":

@@ -57,6 +57,7 @@
     scrapeAt: 0, // وقت آخر قراءة ناجحة
     names: {}, // id→اسم (لعرض أسماء الشات بدل الأرقام)
     connErr: false, // الخادم مش راد (يظهر تحذير في الشريط)
+    myStats: null, // عدّادات الموظف نفسه (رسائل/تعليقات/أوردرات) — تظهر في الشريط
     lastUnreadItems: [], // آخر عناصر غير مقروءة (لوكيل الفحص التلقائي)
     lastUnreadCount: 0, // إجمالي غير المقروء
     unreadSince: {}, // externalId→وقت أول ظهوره غير مقروء (لحساب مدة الانتظار)
@@ -330,7 +331,12 @@
     if (state.connErr) els.dot.style.background = "#f59e0b";
 
     // rank
-    if (state.rank) { els.rank.style.display = "inline-block"; els.rank.textContent = `ترتيبك: #${state.rank}/${state.total}`; }
+    if (state.rank) {
+      els.rank.style.display = "inline-block";
+      const s = state.myStats;
+      els.rank.textContent = s ? `#${state.rank}/${state.total} · 💬${s.msgs} 📝${s.comments} 🛒${s.orders}` : `ترتيبك: #${state.rank}/${state.total}`;
+      els.rank.title = s ? `رسائلك ${s.msgs} · تعليقاتك ${s.comments} · أوردراتك ${s.orders} · نقاطك ${s.points} · منجزة ${s.tasksDone}` : "";
+    }
 
     // spotlight / live indicators
     els.spot.classList.toggle("on", !!(live && live.spotlight));
@@ -724,13 +730,14 @@
 
   async function refreshRank() {
     if (!state.session) return;
-    const r = await send("leaderboard");
+    // /api/me/stats متاح للموظف (بعكس leaderboard إدارة-فقط) — يجيب إحصائياته + ترتيبه + أسماء الفريق للشات
+    const r = await send("myStats");
     if (!r.ok || !r.data) return;
-    const rows = [...r.data.rows].sort((a, b) => (b.points * 10 + b.msgs + b.orders * 3) - (a.points * 10 + a.msgs + a.orders * 3));
-    for (const row of r.data.rows) state.names[row.employeeId] = row.name; // خريطة أسماء للشات
-    const idx = rows.findIndex((x) => x.employeeId === state.session.employeeId);
-    state.rank = idx >= 0 ? idx + 1 : null;
-    state.total = rows.length;
+    const d = r.data;
+    if (d.names) Object.assign(state.names, d.names); // خريطة أسماء للشات (أسماء بدل أرقام)
+    state.rank = d.rank ?? null;
+    state.total = d.total || 0;
+    state.myStats = d.stats || null;
     render();
   }
 

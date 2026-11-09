@@ -4,6 +4,8 @@ import { signToken, verifyToken } from "../src/auth";
 import { evaluateLocal, classifyComment, isAngry } from "../src/ai";
 import { store } from "../src/store";
 import { telegramEnabled, alertText, tgSend } from "../src/telegram";
+import { app } from "../src/app";
+import { signToken } from "../src/auth";
 
 // ---------- auth ----------
 test("auth: توكن صحيح يُقرأ ويرجّع الهوية", () => {
@@ -229,6 +231,19 @@ test("angry: كشف الغضب يرفع angry_customer من التعليق وا�
   const r = store.syncQueue([{ externalId: "th_angry", channel: "whatsapp", customerRef: "أحمد", preview: "تأخير وزفت ومش راضي", link: "https://w/1" }]);
   assert.ok(r.added >= 1);
   assert.ok(store.alerts.some((a) => a.kind === "angry_customer" && a.scanKey === "angry:th_angry" && !a.resolvedAt));
+});
+
+// ---------- إحصائيات الموظف ----------
+test("me/stats: الموظف يجيب إحصائياته + ترتيبه + أسماء الفريق، وبدون توكن 401", async () => {
+  const tok = signToken("emp_002", "employee");
+  const res = await app.request("/api/me/stats", { headers: { authorization: "Bearer " + tok } });
+  assert.equal(res.status, 200);
+  const j = (await res.json()) as any;
+  assert.ok(j.stats && typeof j.stats.msgs === "number");
+  assert.ok(typeof j.total === "number" && j.total >= 1);
+  assert.ok(j.names && j.names["emp_002"]);
+  const res2 = await app.request("/api/me/stats");
+  assert.equal(res2.status, 401);
 });
 
 // ---------- أمان: تعقيم الروابط ----------
