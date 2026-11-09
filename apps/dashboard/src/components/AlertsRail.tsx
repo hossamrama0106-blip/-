@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api } from "../api";
-import { timeAgo } from "../lib/ui";
+import { timeAgo, safeUrl } from "../lib/ui";
 
 const KIND_LABEL: Record<string, string> = {
   idle: "خمول",
@@ -90,8 +90,8 @@ export default function AlertsRail() {
                       فتح {name(a.employeeId)}
                     </button>
                   )}
-                  {a.link && (
-                    <a href={a.link} target="_blank" rel="noreferrer" className="text-xs text-brand-400 hover:underline">🔗 فتح المحادثة</a>
+                  {safeUrl(a.link) && (
+                    <a href={safeUrl(a.link)} target="_blank" rel="noreferrer" className="text-xs text-brand-400 hover:underline">🔗 فتح المحادثة</a>
                   )}
                   <button onClick={() => api.resolveAlert(a.id)} className="text-xs text-slate-400 hover:text-white">
                     تجاهل
@@ -117,8 +117,8 @@ export default function AlertsRail() {
                 </div>
                 <div className="text-red-300 text-xs mt-0.5">{v.type}</div>
                 <div className="text-slate-400 text-xs">{v.reason}</div>
-                {v.link && (
-                  <a href={v.link} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-brand-400 text-[11px] underline">فتح الرابط المرفق</a>
+                {safeUrl(v.link) && (
+                  <a href={safeUrl(v.link)} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-brand-400 text-[11px] underline">فتح الرابط المرفق</a>
                 )}
                 {v.imageUrl && <img src={v.imageUrl} alt="دليل" className="mt-1 h-14 rounded border border-ink-800" />}
               </div>

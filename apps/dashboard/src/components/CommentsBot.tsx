@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api, type CommentsFeed } from "../api";
+import { safeUrl } from "../lib/ui";
 
 const PRIO: Record<string, { label: string; cls: string }> = {
   vip: { label: "عاجل", cls: "bg-red-600/25 text-red-300" },
@@ -79,7 +80,7 @@ export default function CommentsBot() {
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         <span className="text-slate-400">{c.from || "—"}</span> · {c.intent}
                         {c.enqueued ? <span className="text-emerald-400"> · دخل الطابور</span> : null}
-                        {c.link ? <> · <a href={c.link} target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">فتح</a></> : null}
+                        {safeUrl(c.link) ? <> · <a href={safeUrl(c.link)} target="_blank" rel="noreferrer" className="text-brand-400 hover:underline">فتح</a></> : null}
                       </div>
                     </div>
                     <div className="shrink-0 text-[11px] text-slate-400 whitespace-nowrap">{fmtWhen(c.at)}</div>

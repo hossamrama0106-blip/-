@@ -76,6 +76,12 @@ const today = () => localDate(Date.now());
 /** بداية اليوم المحلي (توقيت العمل) كـ epoch ms */
 const dayStartMs = (): number => new Date(today() + "T00:00:00.000Z").getTime() - TZ_OFFSET_MIN * 60000;
 
+/** يقبل http(s) فقط — يمنع javascript:/data: المحقونة في روابط الموظف (XSS على الداشبورد). */
+function safeHttpUrl(u: unknown): string | null {
+  const s = String(u ?? "").trim();
+  return /^https?:\/\//i.test(s) ? s.slice(0, 1000) : null;
+}
+
 function freshLive(employeeId: string): LiveStatus {
   return {
     employeeId,
@@ -594,7 +600,7 @@ class Store {
       reason: input.reason,
       screenshotUrl: input.screenshotUrl ?? null,
       imageUrl: input.imageUrl ?? null,
-      link: input.link ?? null,
+      link: safeHttpUrl(input.link),
       at: nowIso(),
       acknowledgedAt: null,
       reply: null,
@@ -758,7 +764,7 @@ class Store {
       kind: input.kind,
       severity: (input.severity as Alert["severity"]) ?? ViolationSeverity.MEDIUM,
       message: input.message,
-      link: input.link ?? null,
+      link: safeHttpUrl(input.link),
       at: nowIso(),
       resolvedAt: null,
     };
@@ -781,7 +787,7 @@ class Store {
       kind: "angry_customer",
       severity: ViolationSeverity.HIGH,
       message: `😠 عميل غاضب${where}: ${String(input.text || "").slice(0, 140)}`,
-      link: input.link ?? null,
+      link: safeHttpUrl(input.link),
       scanKey: key,
       at: nowIso(),
       resolvedAt: null,
@@ -828,7 +834,7 @@ class Store {
       if (open) {
         open.message = f.message;
         open.at = nowIso();
-        if (f.link) open.link = f.link;
+        if (f.link) open.link = safeHttpUrl(f.link);
         if (f.shotId) open.shotId = f.shotId;
         if (f.severity) open.severity = f.severity as Alert["severity"];
         updated++;
@@ -840,7 +846,7 @@ class Store {
           kind: f.kind || "custom",
           severity: (f.severity as Alert["severity"]) ?? ViolationSeverity.MEDIUM,
           message: f.message,
-          link: f.link ?? null,
+          link: safeHttpUrl(f.link),
           shotId: f.shotId ?? null,
           scanKey,
           at: nowIso(),
@@ -971,7 +977,7 @@ class Store {
       channel: (input.channel as QueueTask["channel"]) ?? Channel.MESSENGER,
       customerRef: input.customerRef,
       preview: (input.preview ?? "").slice(0, 200),
-      link: input.link ?? null,
+      link: safeHttpUrl(input.link),
       externalId: input.externalId ?? null,
       priority: (input.priority as QueueTask["priority"]) ?? QueuePriority.NORMAL,
       status: QueueStatus.WAITING,
@@ -1294,7 +1300,7 @@ class Store {
       externalId: ext,
       text: (input.text || "").slice(0, 300),
       from: input.from || "",
-      link: input.link ?? null,
+      link: safeHttpUrl(input.link),
       priority: cls.priority,
       intent: cls.intent,
       sentiment: cls.sentiment,

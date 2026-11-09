@@ -725,7 +725,8 @@ function shotView<T extends { storagePath?: string | null; dataUrl?: string } | 
 
 app.post("/api/screenshots", async (c) => {
   const body = await c.req.json<{ employeeId: string; dataUrl: string; width?: number; height?: number; isViolation?: boolean; ocrText?: string | null }>();
-  if (!body.dataUrl || body.dataUrl.length > 700000) return c.json({ error: "invalid or too large" }, 400);
+  if (!body.dataUrl || typeof body.dataUrl !== "string" || !body.dataUrl.startsWith("data:image/") || body.dataUrl.length > 700000)
+    return c.json({ error: "invalid or too large" }, 400);
   const shot = store.addScreenshot(body);
   // ارفع لـ R2 لو مربوط (أفضل جهد): ينجح → نخزّن المفتاح ونفضّي البايتات؛ يفشل → تفضل في الذاكرة
   if (r2Enabled()) {

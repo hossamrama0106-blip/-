@@ -45,6 +45,7 @@ function spec(path: string, method: string): { bucket: string; max: number } | n
       return { bucket: "queue", max: n(process.env.RATE_QUEUE_PER_MIN, 90) };
     case "/api/inbox":
     case "/api/queue/sync":
+    case "/api/scan":
       return { bucket: "sync", max: n(process.env.RATE_SYNC_PER_MIN, 40) };
     default:
       return null;

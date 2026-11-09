@@ -231,6 +231,20 @@ test("angry: كشف الغضب يرفع angry_customer من التعليق وا�
   assert.ok(store.alerts.some((a) => a.kind === "angry_customer" && a.scanKey === "angry:th_angry" && !a.resolvedAt));
 });
 
+// ---------- أمان: تعقيم الروابط ----------
+test("security: روابط javascript:/data: تتشال من التنبيهات والطابور (XSS)", () => {
+  store.reportScan("emp_002", [{ key: "xss", kind: "piled_messages", message: "m", link: "javascript:alert(document.cookie)" }]);
+  const a1 = store.alerts.find((x) => x.scanKey === "emp_002:xss");
+  assert.ok(a1);
+  assert.equal(a1!.link, null); // الرابط الخبيث اتشال
+
+  store.reportScan("emp_002", [{ key: "ok", kind: "piled_messages", message: "m", link: "https://business.facebook.com/x" }]);
+  assert.equal(store.alerts.find((x) => x.scanKey === "emp_002:ok")!.link, "https://business.facebook.com/x"); // http(s) سليم يعدّي
+
+  store.syncQueue([{ externalId: "js_task", customerRef: "x", preview: "p", link: "javascript:evil()" }]);
+  assert.equal(store.queue.find((q) => q.externalId === "js_task")!.link, null); // الطابور كمان
+});
+
 // ---------- تيليجرام ----------
 test("telegram: نائم بدون توكن، alertText يصيغ التنبيه، وtgSend يضرب الـ API الصحيح", async () => {
   delete process.env.TELEGRAM_BOT_TOKEN;

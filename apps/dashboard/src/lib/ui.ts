@@ -62,3 +62,9 @@ export function clockAt(iso: string | number | null): string {
   const d = new Date(iso);
   return d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
 }
+
+/** يرجّع الرابط فقط لو http(s) — يمنع javascript:/data: المحقونة (دفاع إضافي على الواجهة ضد XSS). */
+export function safeUrl(u: string | null | undefined): string | undefined {
+  const s = String(u ?? "").trim();
+  return /^https?:\/\//i.test(s) ? s : undefined;
+}
