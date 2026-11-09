@@ -420,6 +420,24 @@
     }
     els.toasts.appendChild(d);
   }
+  // تفاعل كبير في منتصف الشاشة (بدء/إنهاء شيفت/استراحة) — يظهر ثوانٍ ثم يختفي
+  function celebrate(emoji, text, color) {
+    try {
+      if (!document.getElementById("khiam-cel-kf")) {
+        const s = document.createElement("style");
+        s.id = "khiam-cel-kf";
+        s.textContent = "@keyframes khiamCel{0%{opacity:0;transform:scale(.6)}10%{opacity:1;transform:scale(1.06)}18%{transform:scale(1)}82%{opacity:1}100%{opacity:0;transform:scale(.92)}}";
+        (document.head || document.documentElement).appendChild(s);
+      }
+      const o = document.createElement("div");
+      o.style.cssText = "position:fixed;inset:0;z-index:2147483646;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none;font-family:Tahoma,sans-serif;animation:khiamCel 2.8s ease forwards;";
+      o.innerHTML = `<div style="font-size:92px;line-height:1;filter:drop-shadow(0 6px 18px rgba(0,0,0,.4))">${emoji}</div>` +
+        `<div style="margin-top:16px;font-size:28px;font-weight:800;color:#fff;background:${color || "#6366f1"};padding:12px 32px;border-radius:16px;box-shadow:0 12px 44px rgba(0,0,0,.45)">${esc(text)}</div>`;
+      (document.documentElement || document.body).appendChild(o);
+      setTimeout(() => o.remove(), 2900);
+      try { beep(660, 0.16, 0.09); beep(880, 0.18, 0.09); } catch (_) {}
+    } catch (_) {}
+  }
   // عرض تقديمي يظهر مرة واحدة أول تثبيت/تشغيل (يشرح الشريط)
   function showOnboarding() {
     try {
@@ -633,6 +651,12 @@
   } catch (_) {}
 
   // فعل مع تغذية راجعة واضحة لو فشل الاتصال (بدل الفشل الصامت)
+  const CELEBRATE = {
+    shiftStart: ["🚀", "أهلاً بك — بدأ شيفتك!", "#16a34a"],
+    shiftEnd: ["👋", "شيفت موفّق — لبكرة!", "#6366f1"],
+    breakStart: ["☕", "في استراحة", "#f59e0b"],
+    breakEnd: ["💪", "رجعنا للشغل!", "#16a34a"],
+  };
   async function sendAction(type, data, failMsg) {
     const r = await send(type, data);
     if (!r || !r.ok) {
@@ -640,6 +664,8 @@
       return false;
     }
     await heartbeat();
+    const c = CELEBRATE[type];
+    if (c) celebrate(c[0], c[1], c[2]); // تفاعل كبير على الشاشة
     return true;
   }
 
