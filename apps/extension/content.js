@@ -326,8 +326,8 @@
     const [label, color] = STATUS[st] || STATUS.offline;
     els.dot.style.background = color;
     const presence = (live && live.presence) || "not_started";
-    els.statusLabel.textContent = state.connErr ? `${state.session.name} · ⚠️ غير متصل بالخادم` : `${state.session.name} · ${label}`;
-    if (state.connErr) els.dot.style.background = "#f97316";
+    els.statusLabel.textContent = state.connErr ? `${state.session.name} · 🔄 يحاول الاتصال…` : `${state.session.name} · ${label}`;
+    if (state.connErr) els.dot.style.background = "#f59e0b";
 
     // rank
     if (state.rank) { els.rank.style.display = "inline-block"; els.rank.textContent = `ترتيبك: #${state.rank}/${state.total}`; }
@@ -663,13 +663,16 @@
     state.mouseMoved = false;
     if (r.ok && r.data) {
       state.connErr = false;
+      if (hbRetry) { clearTimeout(hbRetry); hbRetry = 0; }
       applyLive(r.data);
       try { chrome.storage.local.set({ liveState: r.data }); } catch (_) {} // مزامنة كل التبويبات + حفظ لآخر refresh
     } else {
-      state.connErr = true; // الخادم مش راد — أظهر تحذير
+      state.connErr = true; // الخادم مش راد (غالبًا بيصحى من النوم على Render) — نحاول بسرعة بدل انتظار 10ث
       render();
+      if (!hbRetry) hbRetry = setTimeout(() => { hbRetry = 0; heartbeat(); }, 3500);
     }
   }
+  let hbRetry = 0;
   let mouseTimer = 0;
   document.addEventListener("mousemove", () => {
     const now = Date.now();

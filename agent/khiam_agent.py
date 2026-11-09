@@ -674,7 +674,12 @@ def run_gui(cfg):
         )
         icon = pystray.Icon("khiam", img, "Khiam Ops — المراقبة شغّالة", menu)
         tray["icon"] = icon
-        threading.Thread(target=icon.run, daemon=True).start()
+        def _run():
+            try:
+                icon.run()
+            except Exception:
+                tray["icon"] = False  # فشل شريط النظام → المرة الجاية نصغّر لشريط المهام بدل الاختفاء
+        threading.Thread(target=_run, daemon=True).start()
         return icon
 
     def show_window():
@@ -685,13 +690,18 @@ def run_gui(cfg):
 
     def hide_to_tray():
         start_tray()
-        try:
-            if tray["icon"]:
-                root.withdraw()  # يختفي تمامًا → يعيش في شريط النظام بجانب الساعة
-            else:
-                root.iconify()   # لا tray → صغّره لشريط المهام (يفضل شغّال)
-        except Exception:
-            pass
+        # لا نُخفي النافذة إلا بعد التأكد إن أيقونة شريط النظام ظهرت فعلًا — يمنع «اختفاء البرنامج بلا رجعة»
+        def do_hide():
+            try:
+                icon = tray["icon"]
+                if icon and getattr(icon, "visible", False):
+                    root.withdraw()   # الأيقونة مؤكّد ظاهرة → اختفِ تمامًا (شريط النظام)
+                else:
+                    root.iconify()    # لسه ماظهرتش أو فشلت → صغّر لشريط المهام (يفضل موجود)
+            except Exception:
+                try: root.iconify()
+                except Exception: pass
+        root.after(700, do_hide)
 
     def quit_app():
         stop_event.set()
