@@ -13,16 +13,18 @@ const README_TXT = [
   "حزمة الموظف — Khiam Ops",
   "",
   "المحتوى:",
-  "  extension/   إضافة كروم (تُحمّل Load unpacked)",
-  "  agent/       برنامج ويندوز (اختياري — نافذة/خمول/لقطات)",
-  "  تثبيت.bat   خطوات سريعة",
+  "  KhiamOps-Setup.exe   مثبّت البرنامج (دبل-كليك — يتسطّب ويشتغل في الخلفية)",
+  "  extension/           إضافة كروم (تُحمّل Load unpacked)",
+  "  install.bat          خطوات سريعة",
+  "  agent/               مصدر البرنامج (بديل لو حبيت تشغّله ببايثون)",
   "",
-  "التثبيت:",
-  "  1) كروم: chrome://extensions ← Developer mode ← Load unpacked ← اختر مجلد extension",
-  "  2) افتح أيقونة الإضافة ← (أول مرة) ⚙ إعدادات الخادم ← حط رابط النظام ← حفظ",
-  "  3) ادخل باسم المستخدم وكلمة السر من الإدارة ← وافق على إشعار المتابعة",
-  "  4) (اختياري) البرنامج: افتح agent/config.json وحط backend/username/password ثم:",
-  "     python agent/khiam_agent.py",
+  "التثبيت (3 خطوات):",
+  "  1) البرنامج: دبل-كليك على KhiamOps-Setup.exe ← Next ← فعّل «تشغيل تلقائي مع ويندوز» ← تثبيت.",
+  "     (لو ظهر تحذير ويندوز الأزرق: More info ← Run anyway)",
+  "  2) الإضافة: كروم ← chrome://extensions ← Developer mode ← Load unpacked ← اختر مجلد extension.",
+  "  3) الدخول: افتح أيقونة الإضافة والبرنامج ← ادخل باسم المستخدم وكلمة السر من الإدارة ← وافق على إشعار المتابعة.",
+  "",
+  "داخل البرنامج: فعّل «ابدأ المراقبة تلقائيًّا» — بعدها يشتغل لوحده في الخلفية مع علامة ✓.",
   "",
   "ملاحظة: النظام معلن — يسجّل الرسائل والتعليقات والأوردرات وحالة العمل أثناء الشيفت.",
 ].join("\r\n");
@@ -34,24 +36,21 @@ const INSTALL_BAT = [
   "echo    Khiam Ops - تثبيت حزمة الموظف",
   "echo ============================================",
   "echo.",
-  "echo [1/3] برنامج الويندوز (Agent):",
-  'if exist "%~dp0agent\\config.json" (',
-  "  echo     - config.json موجود.",
+  "echo [1/3] البرنامج:",
+  'if exist "%~dp0KhiamOps-Setup.exe" (',
+  '  echo     شغّل المثبّت... (Next ثم فعّل: تشغيل تلقائي مع ويندوز)',
+  '  start "" "%~dp0KhiamOps-Setup.exe"',
   ") else (",
-  '  copy "%~dp0agent\\config.example.json" "%~dp0agent\\config.json" >nul',
-  "  echo     - اتعمل agent\\config.json  ^<^< افتحه وحط backend واسم المستخدم وكلمة السر.",
+  '  echo     المثبّت غير موجود - شغّل البرنامج ببايثون: python "%~dp0agent\\khiam_agent.py"',
   ")",
-  'echo     - للقطات الشاشة (اختياري): pip install -r "%~dp0agent\\requirements.txt"',
   "echo.",
   "echo [2/3] اضافة كروم:",
   "echo     1) افتح: chrome://extensions",
-  "echo     2) فعّل: Developer mode",
+  "echo     2) فعّل: Developer mode (أعلى يمين)",
   'echo     3) Load unpacked واختر: "%~dp0extension"',
-  "echo     4) ايقونة الاضافة ^> (اول مرة) ⚙ اعدادات الخادم ^> حط رابط النظام",
   "echo.",
   "echo [3/3] الدخول:",
-  "echo     ادخل باسم المستخدم وكلمة السر ^> وافق على اشعار المتابعة.",
-  'echo     تشغيل البرنامج: python "%~dp0agent\\khiam_agent.py"',
+  "echo     افتح ايقونة الاضافة والبرنامج ^> ادخل باسم المستخدم وكلمة السر ^> وافق على اشعار المتابعة.",
   "echo.",
   "pause",
 ].join("\r\n");
@@ -73,6 +72,15 @@ await mkdir(join(pack, "agent"), { recursive: true });
 for (const f of ["khiam_agent.py", "config.example.json", "requirements.txt", "README.md", "build_exe.bat", "khiam_installer.iss"]) {
   const src = join(root, "agent", f);
   if (existsSync(src)) await cp(src, join(pack, "agent", f));
+}
+
+// 2ب) المثبّت الجاهز (دبل-كليك) لو مبنيّ — ده المسار الأساسي للموظف (بلا بايثون)
+const setupExe = join(root, "agent", "Output", "KhiamOps-Setup.exe");
+if (existsSync(setupExe)) {
+  await cp(setupExe, join(pack, "KhiamOps-Setup.exe"));
+  console.log("  + KhiamOps-Setup.exe (مثبّت جاهز)");
+} else {
+  console.log("  ! KhiamOps-Setup.exe غير موجود — شغّل agent/build_installer.bat الأول لإضافته للحزمة.");
 }
 
 // 3) تعليمات + تثبيت (أسماء ASCII لتفادي تشويه ترميز أسماء الملفات في بعض أدوات الفك)
