@@ -1,11 +1,13 @@
+import { useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useDash } from "../store";
 import { api } from "../api";
 import PushToTalk from "./PushToTalk";
 
 export default function TopBar() {
-  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme, logout } = useDash(useShallow((s) => ({
+  const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme, logout, refresh } = useDash(useShallow((s) => ({
     connected: s.connected,
+    refresh: s.refresh,
     adminId: s.adminId,
     role: s.role,
     inbox: s.inbox,
@@ -34,14 +36,21 @@ export default function TopBar() {
   const activeCount = monitored.filter((e) => live[e.id]?.online).length;
   const criticalAlerts = alerts.filter((a) => a.severity === "high").length;
 
+  const [refreshing, setRefreshing] = useState(false);
+  const doRefresh = async () => {
+    setRefreshing(true);
+    try { await refresh(); } finally { setTimeout(() => setRefreshing(false), 500); }
+  };
+
   return (
     <header className="flex items-center gap-3 px-5 h-20 bg-ink-900 border-b border-ink-800 sticky top-0 z-30 overflow-x-auto">
       <div className="font-extrabold text-white text-lg whitespace-nowrap">Khiam Ops</div>
 
-      <div className="flex items-center gap-2 text-sm whitespace-nowrap">
-        <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-red-500"}`} />
-        <span className="text-slate-400">{connected ? "متصل لحظيًا" : "غير متصل"}</span>
-      </div>
+      {/* مؤشر الاتصال — قابل للضغط للتحديث الفوري بلا تسجيل خروج */}
+      <button onClick={doRefresh} title="اضغط للتحديث الفوري (بدون تسجيل خروج)" className="flex items-center gap-2 text-sm whitespace-nowrap rounded-lg px-2 py-1 hover:bg-ink-800 transition">
+        <span className={`w-2.5 h-2.5 rounded-full ${connected ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
+        <span className="text-slate-400">{connected ? "متصل لحظيًا" : "يعيد الاتصال…"}</span>
+      </button>
 
       <div className="flex-1" />
 
@@ -59,6 +68,7 @@ export default function TopBar() {
 
       {/* أزرار بأسماء تحتها (بدل أيقونات مبهمة) */}
       <div className="flex items-center gap-1.5">
+        <IconBtn icon="🔄" label="تحديث" onClick={doRefresh} spin={refreshing} title="تحديث البيانات فورًا بدون تسجيل خروج" />
         {role === "admin" && <IconBtn icon="🎛️" label="تحكّم عن بُعد" onClick={() => setShowRemote(true)} />}
         <IconBtn icon="🤖" label="بوت التعليقات" onClick={() => setShowComments(true)} />
         <IconBtn icon="📊" label="مؤشرات" onClick={() => setShowKpi(true)} />
@@ -80,7 +90,7 @@ export default function TopBar() {
   );
 }
 
-function IconBtn({ icon, label, onClick, active, title }: { icon: string; label: string; onClick: () => void; active?: boolean; title?: string }) {
+function IconBtn({ icon, label, onClick, active, title, spin }: { icon: string; label: string; onClick: () => void; active?: boolean; title?: string; spin?: boolean }) {
   return (
     <button
       onClick={onClick}
@@ -89,7 +99,7 @@ function IconBtn({ icon, label, onClick, active, title }: { icon: string; label:
         active ? "bg-brand-500/20 border-brand-400 text-brand-400" : "bg-ink-800 hover:bg-ink-700 border-ink-700 text-slate-200"
       }`}
     >
-      <span className="text-base leading-none">{icon}</span>
+      <span className={`text-base leading-none ${spin ? "animate-spin" : ""}`}>{icon}</span>
       <span className="text-[10px] leading-none whitespace-nowrap">{label}</span>
     </button>
   );

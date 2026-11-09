@@ -52,10 +52,13 @@ interface DashState {
   setTheme: (t: "light" | "dark") => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
+  refresh: () => Promise<void>;
 }
 
 let es: EventSource | null = null;
 let poll: ReturnType<typeof setInterval> | null = null;
+let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+let netHooks = false;
 
 export const useDash = create<DashState>((set, get) => ({
   connected: false,
@@ -142,6 +145,7 @@ export const useDash = create<DashState>((set, get) => ({
   },
 
   connect() {
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if (es) es.close();
     es = new EventSource("/api/stream?token=" + encodeURIComponent(getToken()));
     es.addEventListener("hello", () => {
@@ -150,7 +154,20 @@ export const useDash = create<DashState>((set, get) => ({
       // عند إعادة الاتصال: أعد تحميل اللقطة الكاملة لتفادي البيانات القديمة
       if (!wasConnected) get().loadSnapshot().catch(() => {});
     });
-    es.onerror = () => set({ connected: false });
+    es.onerror = () => {
+      set({ connected: false });
+      // EventSource بيوقف المحاولة لو السيرفر رجّع خطأ (401 توكن / 502 أثناء إيقاظ Render) —
+      // نعيد الاتصال صراحةً كل 4ث حتى يرجع، بلا تسجيل خروج ولا تدخّل من المدير.
+      try { if (es) es.close(); } catch { /* تجاهل */ }
+      es = null;
+      if (!reconnectTimer) reconnectTimer = setTimeout(() => { reconnectTimer = null; if (get().loggedIn) get().connect(); }, 4000);
+    };
+    // رجوع النت / التركيز على التبويب → حدّث وأعد الاتصال فورًا (بلا خروج)
+    if (!netHooks && typeof window !== "undefined") {
+      netHooks = true;
+      window.addEventListener("online", () => { if (get().loggedIn) get().connect(); });
+      document.addEventListener("visibilitychange", () => { if (!document.hidden && get().loggedIn) get().loadSnapshot().catch(() => {}); });
+    }
 
     const onStatus = (e: MessageEvent) => {
       const { payload } = JSON.parse(e.data);
@@ -254,5 +271,11 @@ export const useDash = create<DashState>((set, get) => ({
       const k = await api.metrics();
       set({ kpi: k });
     } catch {}
+  },
+  // تحديث يدوي فوري بدون تسجيل خروج — يعيد تحميل كل البيانات ويعيد اتصال اللحظي
+  async refresh() {
+    try { await get().loadSnapshot(); } catch { /* فشل مؤقّت (إيقاظ السيرفر) — نسيب الجلسة زي ما هي، ما نطردش المدير */ }
+    try { await get().refreshLeaderboard(); } catch { /* تجاهل */ }
+    get().connect();
   },
 }));
