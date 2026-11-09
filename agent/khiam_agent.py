@@ -32,6 +32,7 @@ DEFAULTS = {
     "captureQuality": 55,
     "autostart": False,       # يبدأ المراقبة تلقائيًّا عند فتح البرنامج (لو البيانات محفوظة)
     "startWithWindows": False, # يشتغل مع بدء ويندوز (مفتاح Run في الريجستري)
+    "onboarded": False,       # شاهد العرض التقديمي الترحيبي (يظهر أول تشغيل فقط)
 }
 
 
@@ -506,6 +507,72 @@ def run_gui(cfg):
         tk.Button(status, text="إيقاف المتابعة", bg="#b91c1c", fg="#fff", relief="flat",
                   activebackground="#991b1b", command=stop_monitoring, cursor="hand2").pack(fill="x", ipady=6)
 
+    # ---- عرض تقديمي ترحيبي (أول تشغيل) + زر «دليل البدء» يعيده ----
+    SLIDES = [
+        ("👋", "أهلاً بك في Khiam Ops", "برنامج متابعة أداء فريق خدمة العملاء.\nخطوتين بسيطتين وتبقى جاهز للشغل."),
+        ("🖥️", "جهاز الشركة — متابعة أثناء العمل", "الجهاز ده مزوّد بنظام متابعة أداء أثناء ساعات العمل:\nرسائل / تعليقات / أوردرات / حالة النشاط،\nوقد تُلتقط لقطات شاشة للرقابة أثناء الشيفت."),
+        ("🧩", "الخطوة 1: فعّل إضافة كروم", "افتح كروم واكتب في شريط العنوان:\nchrome://extensions\nفعّل «Developer mode» (أعلى اليمين)،\nثم اضغط «Load unpacked» واختر مجلد extension."),
+        ("🔑", "الخطوة 2: سجّل الدخول مرة واحدة", "افتح أيقونة الإضافة وادخل باسم المستخدم وكلمة السر\nمن الإدارة — وهنا في البرنامج ادخل بنفس البيانات."),
+        ("🚀", "جاهز للعمل!", "ابدأ شيفتك وسجّل البريك من الشريط.\nلو في محادثة مُسنَدة ليك، ردّ واضغط «تم، التالي».\nالبرنامج هيشتغل في الخلفية تلقائيًّا. يلّا بينا!"),
+    ]
+    onboard = tk.Frame(root, bg=BG)
+    ob = {"i": 0}
+    ob_emoji = tk.Label(onboard, text="", bg=BG, fg="#fff", font="Tahoma 42")
+    ob_emoji.pack(pady=(26, 6))
+    ob_title = tk.Label(onboard, text="", bg=BG, fg="#fff", font="Tahoma 15 bold", wraplength=400, justify="center")
+    ob_title.pack(pady=(0, 12))
+    ob_body = tk.Label(onboard, text="", bg=CARD, fg=FG, font="Tahoma 11", justify="right", anchor="e",
+                       wraplength=370, highlightbackground=BORDER, highlightthickness=1, padx=14, pady=14)
+    ob_body.pack(fill="x", padx=26)
+    ob_dots = tk.Label(onboard, text="", bg=BG, fg=ACC, font="Tahoma 13")
+    ob_dots.pack(pady=(14, 10))
+    ob_nav = tk.Frame(onboard, bg=BG)
+    ob_nav.pack(fill="x", padx=26)
+
+    def ob_finish():
+        cfg["onboarded"] = True
+        save_config(cfg)
+        onboard.pack_forget()
+        login.pack(fill="x", padx=24, pady=16)
+
+    def ob_render():
+        emoji, title, body = SLIDES[ob["i"]]
+        ob_emoji.config(text=emoji)
+        ob_title.config(text=title)
+        ob_body.config(text=body)
+        ob_dots.config(text="  ".join("●" if j == ob["i"] else "○" for j in range(len(SLIDES))))
+        ob_prev_btn.config(state=("disabled" if ob["i"] == 0 else "normal"))
+        ob_next_btn.config(text=("ابدأ ✓" if ob["i"] == len(SLIDES) - 1 else "التالي ▸"))
+
+    def ob_next():
+        if ob["i"] >= len(SLIDES) - 1:
+            ob_finish()
+        else:
+            ob["i"] += 1
+            ob_render()
+
+    def ob_prev():
+        if ob["i"] > 0:
+            ob["i"] -= 1
+            ob_render()
+
+    ob_prev_btn = tk.Button(ob_nav, text="◂ السابق", bg=CARD, fg=FG, relief="flat", activebackground="#1b2432", command=ob_prev, cursor="hand2")
+    ob_prev_btn.pack(side="right", ipadx=10, ipady=5)
+    ob_next_btn = tk.Button(ob_nav, text="التالي ▸", bg=ACC, fg="#fff", relief="flat", activebackground="#4f46e5", font="Tahoma 10 bold", command=ob_next, cursor="hand2")
+    ob_next_btn.pack(side="left", ipadx=16, ipady=5)
+    tk.Button(onboard, text="تخطّي", bg=BG, fg=SUB, relief="flat", activebackground=BG, command=ob_finish, cursor="hand2").pack(pady=(12, 0))
+
+    def show_onboarding():
+        ob["i"] = 0
+        ob_render()
+        login.pack_forget()
+        status.pack_forget()
+        onboard.pack(fill="both", expand=True)
+
+    ob_link = tk.Label(login, text="؟ عرض دليل البدء", bg=BG, fg=SUB, cursor="hand2", font="Tahoma 9")
+    ob_link.pack(pady=(10, 0))
+    ob_link.bind("<Button-1>", lambda e: show_onboarding())
+
     CAT_AR = {"work": "عمل ✅", "social": "سوشيال ⚠️", "games": "ألعاب ⛔", "entertainment": "ترفيه ⛔", "other": "أخرى"}
 
     def pump():
@@ -655,8 +722,10 @@ def run_gui(cfg):
     btn.config(command=on_start)
     root.protocol("WM_DELETE_WINDOW", on_close)
     root.after(400, pump)
-    # تشغيل تلقائي: لو مفعّل والبيانات محفوظة (أو إقلاع مع ويندوز) → ابدأ المراقبة فورًا
-    if (cfg.get("autostart") or cfg.get("trayBoot")) and cfg.get("username") and cfg.get("password"):
+    # أول تشغيل → العرض التقديمي الترحيبي؛ وإلا تشغيل تلقائي لو مفعّل والبيانات محفوظة
+    if not cfg.get("onboarded"):
+        show_onboarding()
+    elif (cfg.get("autostart") or cfg.get("trayBoot")) and cfg.get("username") and cfg.get("password"):
         root.after(600, on_start)
     root.mainloop()
 
