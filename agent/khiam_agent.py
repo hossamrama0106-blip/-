@@ -30,6 +30,8 @@ DEFAULTS = {
     "captureIntervalSeconds": 3,
     "captureMaxWidth": 1280,
     "captureQuality": 55,
+    "autostart": False,       # يبدأ المراقبة تلقائيًّا عند فتح البرنامج (لو البيانات محفوظة)
+    "startWithWindows": False, # يشتغل مع بدء ويندوز (مفتاح Run في الريجستري)
 }
 
 
@@ -54,6 +56,7 @@ def load_config():
     ap.add_argument("--interval", type=int)
     ap.add_argument("--capture", action="store_true")
     ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--tray", action="store_true")  # إقلاع مع ويندوز: يبدأ ويختفي للخلفية (شريط النظام)
     a, _ = ap.parse_known_args()
     if a.username:
         cfg["username"] = a.username
@@ -68,6 +71,7 @@ def load_config():
     if a.capture:
         cfg["allowCapture"] = True
     cfg["headless"] = bool(a.headless)
+    cfg["trayBoot"] = bool(a.tray)  # لا يُحفظ — علم إقلاع فقط
     cfg["username"] = cfg["username"] or os.environ.get("KHIAM_USERNAME", "")
     cfg["password"] = cfg["password"] or os.environ.get("KHIAM_PASSWORD", "")
     cfg["code"] = cfg["code"] or os.environ.get("KHIAM_CODE", "")
@@ -81,6 +85,53 @@ def save_config(cfg):
             json.dump(keep, f, ensure_ascii=False, indent=2)
     except Exception as e:
         print("تعذّر حفظ config.json:", e)
+
+
+# ---------------- تشغيل تلقائي مع ويندوز (مفتاح Run في الريجستري) ----------------
+_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
+_RUN_NAME = "KhiamOps"
+
+
+def _launch_command():
+    """أمر تشغيل البرنامج للإقلاع مع ويندوز (يختفي للخلفية مباشرة عبر --tray)."""
+    if getattr(sys, "frozen", False):  # نسخة .exe مبنيّة
+        return f'"{sys.executable}" --tray'
+    # نسخة بايثون: استخدم pythonw (بلا نافذة طرفية) على نفس السكربت
+    pyw = os.path.join(os.path.dirname(sys.executable), "pythonw.exe")
+    exe = pyw if os.path.exists(pyw) else sys.executable
+    return f'"{exe}" "{os.path.abspath(__file__)}" --tray'
+
+
+def is_windows_startup():
+    if not IS_WIN:
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY) as k:
+            winreg.QueryValueEx(k, _RUN_NAME)
+            return True
+    except Exception:
+        return False
+
+
+def set_windows_startup(enable):
+    """فعّل/ألغِ تشغيل البرنامج مع بدء ويندوز للمستخدم الحالي. يرجّع True لو نجح."""
+    if not IS_WIN:
+        return False
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, _RUN_KEY, 0, winreg.KEY_SET_VALUE) as k:
+            if enable:
+                winreg.SetValueEx(k, _RUN_NAME, 0, winreg.REG_SZ, _launch_command())
+            else:
+                try:
+                    winreg.DeleteValue(k, _RUN_NAME)
+                except FileNotFoundError:
+                    pass
+        return True
+    except Exception as e:
+        print("تعذّر ضبط التشغيل مع ويندوز:", e)
+        return False
 
 
 TOKEN = ""
@@ -355,13 +406,13 @@ def run_gui(cfg):
     root.title("Khiam Ops — متابعة الأداء")
     root.configure(bg=BG)
     try:
-        w, h = 460, 600
+        w, h = 460, 660
         x = (root.winfo_screenwidth() - w) // 2
-        y = max(0, (root.winfo_screenheight() - h) // 3)
+        y = max(0, (root.winfo_screenheight() - h) // 4)
         root.geometry(f"{w}x{h}+{x}+{y}")
-        root.minsize(440, 560)
+        root.minsize(440, 600)
     except Exception:
-        root.geometry("460x600")
+        root.geometry("460x660")
     try:
         root.option_add("*Font", "Tahoma 10")
         _st = ttk.Style(root)
@@ -373,7 +424,8 @@ def run_gui(cfg):
 
     ui = _queue.Queue()
     stop_event = threading.Event()
-    state = {"thread": None, "eid": None, "name": None}
+    state = {"thread": None, "eid": None, "name": None, "monitoring": False}
+    tray = {"icon": None}
 
     head = tk.Frame(root, bg=BG)
     head.pack(fill="x", pady=(18, 4))
@@ -402,9 +454,16 @@ def run_gui(cfg):
     e_backend = field(login, "رابط النظام", _bk)
     e_user = field(login, "اسم المستخدم", cfg.get("username", ""))
     e_pass = field(login, "كلمة السر", cfg.get("password", ""), show="●")
+    def _chk(parent, text, var):
+        tk.Checkbutton(parent, text=text, variable=var, bg=BG, fg=SUB, selectcolor=CARD,
+                       activebackground=BG, activeforeground=FG, anchor="e", font="Tahoma 9").pack(fill="x", pady=(8, 0))
+
     cap_var = tk.IntVar(value=1 if cfg.get("allowCapture") else 0)
-    tk.Checkbutton(login, text="السماح بلقطات الشاشة عند طلب الإدارة (لايف)", variable=cap_var,
-                   bg=BG, fg=SUB, selectcolor=CARD, activebackground=BG, anchor="e").pack(fill="x", pady=(10, 0))
+    auto_var = tk.IntVar(value=1 if cfg.get("autostart") else 0)
+    win_var = tk.IntVar(value=1 if (cfg.get("startWithWindows") or is_windows_startup()) else 0)
+    _chk(login, "السماح بلقطات الشاشة عند طلب الإدارة (لايف)", cap_var)
+    _chk(login, "ابدأ المراقبة تلقائيًّا عند فتح البرنامج", auto_var)
+    _chk(login, "شغّل البرنامج مع بدء ويندوز (في الخلفية)", win_var)
 
     err = tk.Label(login, text="", bg=BG, fg="#f87171", font="Tahoma 9")
     err.pack(fill="x", pady=(6, 0))
@@ -429,6 +488,8 @@ def run_gui(cfg):
         rows[key] = v
 
     def build_status():
+        tk.Label(status, text="✓ وضع المراقبة مُفعّل", bg="#065f46", fg="#d1fae5",
+                 font="Tahoma 11 bold").pack(fill="x", ipady=7, pady=(2, 10))
         s_dot.pack(pady=(4, 0))
         s_state.pack()
         s_who.pack(pady=(0, 10))
@@ -438,8 +499,12 @@ def run_gui(cfg):
                          highlightbackground=BORDER, highlightthickness=1, padx=12,
                          text="▸ ثبّت الإضافة على كروم: chrome://extensions ← Developer mode ← Load unpacked ← مجلد extension\n▸ سيبه شغّال طول الشيفت.")
         guide.pack(fill="x", pady=(12, 6), ipady=10)
+        tk.Label(status, text="اقفل النافذة (✕) = يفضل شغّال في الخلفية بجانب ساعة ويندوز.",
+                 bg=BG, fg=SUB, font="Tahoma 8", wraplength=360, justify="right", anchor="e").pack(fill="x", pady=(8, 2))
+        tk.Button(status, text="▾ تصغير للخلفية", bg=CARD, fg=FG, relief="flat",
+                  activebackground="#1b2432", command=hide_to_tray, cursor="hand2").pack(fill="x", ipady=5, pady=(2, 4))
         tk.Button(status, text="إيقاف المتابعة", bg="#b91c1c", fg="#fff", relief="flat",
-                  activebackground="#991b1b", command=on_stop, cursor="hand2").pack(fill="x", ipady=6, pady=(4, 0))
+                  activebackground="#991b1b", command=stop_monitoring, cursor="hand2").pack(fill="x", ipady=6)
 
     CAT_AR = {"work": "عمل ✅", "social": "سوشيال ⚠️", "games": "ألعاب ⛔", "entertainment": "ترفيه ⛔", "other": "أخرى"}
 
@@ -449,14 +514,18 @@ def run_gui(cfg):
                 d = ui.get_nowait()
                 ev = d.get("event")
                 if ev == "login_ok":
+                    state["monitoring"] = True
                     login.pack_forget()
                     status.pack(fill="both", expand=True, padx=24, pady=(4, 16))
                     build_status()
                     s_who.config(text=f"{d['name']}")
+                    if cfg.get("trayBoot"):
+                        root.after(1200, hide_to_tray)  # إقلاع مع ويندوز → للخلفية مباشرة
                 elif ev == "connecting":
                     btn.config(text=f"جارٍ الاتصال… ({d['i']}/{d['n']})")
                     err.config(text="قد يستغرق لحظات لإيقاظ الخادم…", fg="#94a3b8")
                 elif ev == "login_err":
+                    state["monitoring"] = False
                     prog.stop(); prog.pack_forget()
                     btn.config(state="normal", text="تثبيت وبدء المتابعة")
                     err.config(text=d.get("msg", "فشل الدخول"), fg="#f87171")
@@ -490,11 +559,14 @@ def run_gui(cfg):
         cfg["username"] = e_user.get().strip()
         cfg["password"] = e_pass.get()
         cfg["allowCapture"] = bool(cap_var.get())
+        cfg["autostart"] = bool(auto_var.get())
+        cfg["startWithWindows"] = bool(win_var.get())
         if not cfg["username"] or not cfg["password"]:
             err.config(text="اكتب اسم المستخدم وكلمة السر")
             return
         err.config(text="")
         save_config(cfg)
+        set_windows_startup(cfg["startWithWindows"])  # يضيف/يشيل مفتاح Run حسب الاختيار
         btn.config(state="disabled", text="جارٍ الاتصال…")
         prog.pack(fill="x", pady=(10, 0)); prog.start(12)
         stop_event.clear()
@@ -502,16 +574,90 @@ def run_gui(cfg):
         state["thread"] = t
         t.start()
 
-    def on_stop():
+    def _tray_image():
+        try:
+            from PIL import Image, ImageDraw
+            img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
+            d = ImageDraw.Draw(img)
+            d.ellipse([3, 3, 61, 61], fill=(99, 102, 241, 255))
+            d.text((24, 21), "K", fill=(255, 255, 255, 255))
+            return img
+        except Exception:
+            return None
+
+    def start_tray():
+        if tray["icon"] is not None:
+            return tray["icon"]
+        try:
+            import pystray
+        except Exception:
+            tray["icon"] = False  # pystray غير متاح → نصغّر لشريط المهام بدل الاختفاء
+            return False
+        img = _tray_image()
+        if img is None:
+            tray["icon"] = False
+            return False
+        menu = pystray.Menu(
+            pystray.MenuItem("فتح البرنامج", lambda i, it: root.after(0, show_window), default=True),
+            pystray.MenuItem("✓ المراقبة شغّالة", None, enabled=False),
+            pystray.MenuItem("إيقاف وخروج", lambda i, it: root.after(0, quit_app)),
+        )
+        icon = pystray.Icon("khiam", img, "Khiam Ops — المراقبة شغّالة", menu)
+        tray["icon"] = icon
+        threading.Thread(target=icon.run, daemon=True).start()
+        return icon
+
+    def show_window():
+        try:
+            root.deiconify(); root.lift(); root.focus_force()
+        except Exception:
+            pass
+
+    def hide_to_tray():
+        start_tray()
+        try:
+            if tray["icon"]:
+                root.withdraw()  # يختفي تمامًا → يعيش في شريط النظام بجانب الساعة
+            else:
+                root.iconify()   # لا tray → صغّره لشريط المهام (يفضل شغّال)
+        except Exception:
+            pass
+
+    def quit_app():
         stop_event.set()
+        try:
+            if tray["icon"]:
+                tray["icon"].stop()
+        except Exception:
+            pass
         try:
             root.destroy()
         except Exception:
             pass
 
+    def stop_monitoring():
+        stop_event.set()
+        state["monitoring"] = False
+        try:
+            prog.stop(); prog.pack_forget()
+        except Exception:
+            pass
+        status.pack_forget()
+        login.pack(fill="x", padx=24, pady=16)
+        btn.config(state="normal", text="تثبيت وبدء المتابعة")
+
+    def on_close():
+        if state.get("monitoring"):
+            hide_to_tray()  # المراقبة شغّالة → للخلفية (ما توقفش بالغلط)
+        else:
+            quit_app()
+
     btn.config(command=on_start)
-    root.protocol("WM_DELETE_WINDOW", on_stop)
+    root.protocol("WM_DELETE_WINDOW", on_close)
     root.after(400, pump)
+    # تشغيل تلقائي: لو مفعّل والبيانات محفوظة (أو إقلاع مع ويندوز) → ابدأ المراقبة فورًا
+    if (cfg.get("autostart") or cfg.get("trayBoot")) and cfg.get("username") and cfg.get("password"):
+        root.after(600, on_start)
     root.mainloop()
 
 
