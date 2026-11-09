@@ -4,6 +4,14 @@ import { useDash } from "../store";
 import { api } from "../api";
 import PushToTalk from "./PushToTalk";
 
+const THEME_ORDER = ["dark", "light", "midnight"];
+const THEME_META: Record<string, { icon: string; label: string }> = {
+  dark: { icon: "🌙", label: "داكن" },
+  light: { icon: "☀️", label: "فاتح" },
+  midnight: { icon: "🌌", label: "ميدنايت" },
+};
+const nextTheme = (t: string) => THEME_ORDER[(THEME_ORDER.indexOf(t) + 1) % THEME_ORDER.length] || "dark";
+
 export default function TopBar() {
   const { connected, inbox, live, employees, liteMode, setLite, nightMode, setNight, setShowSettings, setShowKpi, setShowAudit, setShowReport, setShowTour, setShowComments, setShowRemote, adminId, alerts, queue, role, theme, setTheme, logout, refresh } = useDash(useShallow((s) => ({
     connected: s.connected,
@@ -80,7 +88,7 @@ export default function TopBar() {
         }} />
         <PushToTalk />
         <IconBtn icon="🌃" label={nightMode ? "رادار مفعّل" : "رادار ليلي"} active={nightMode} onClick={() => setNight(!nightMode)} />
-        <IconBtn icon={theme === "light" ? "🌙" : "☀️"} label={theme === "light" ? "داكن" : "فاتح"} onClick={() => setTheme(theme === "light" ? "dark" : "light")} />
+        <IconBtn icon={THEME_META[theme]?.icon ?? "🎨"} label={`ثيم: ${THEME_META[theme]?.label ?? theme}`} onClick={() => setTheme(nextTheme(theme))} />
         <IconBtn icon={liteMode ? "🖥️" : "📱"} label={liteMode ? "وضع كامل" : "وضع بسيط"} onClick={() => setLite(!liteMode)} />
         {role === "admin" && <IconBtn icon="⚙️" label="الإعدادات" onClick={() => setShowSettings(true)} />}
         <IconBtn icon="❓" label="جولة" onClick={() => setShowTour(true)} />

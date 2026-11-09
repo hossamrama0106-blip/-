@@ -61,6 +61,22 @@ body {
   background: #cbd5e1;
 }
 
+/* ---------- ثيم ميدنايت (داكن مائل للأزرق الكحلي) ---------- */
+[data-theme="midnight"] {
+  color-scheme: dark;
+  --color-ink-950: #0a0f1f; /* خلفية الصفحة — كحلي عميق */
+  --color-ink-900: #0f1830; /* مدخلات/أسطح داخلية */
+  --color-ink-850: #16213f; /* بطاقات/نوافذ */
+  --color-ink-800: #1e2b4d; /* حدود/تمرير */
+  --color-ink-700: #2a3a63; /* حدود */
+}
+[data-theme="midnight"] body {
+  background: var(--color-ink-950);
+}
+[data-theme="midnight"] ::-webkit-scrollbar-thumb {
+  background: #2a3a63;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

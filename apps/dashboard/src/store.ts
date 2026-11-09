@@ -49,7 +49,7 @@ interface DashState {
   setShowTour: (v: boolean) => void;
   setShowComments: (v: boolean) => void;
   setShowRemote: (v: boolean) => void;
-  setTheme: (t: "light" | "dark") => void;
+  setTheme: (t: string) => void;
   refreshLeaderboard: () => Promise<void>;
   refreshKpi: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -86,7 +86,7 @@ export const useDash = create<DashState>((set, get) => ({
   showTour: false,
   showComments: false,
   showRemote: false,
-  theme: typeof document !== "undefined" && document.documentElement.getAttribute("data-theme") === "light" ? "light" : "dark",
+  theme: (typeof document !== "undefined" && document.documentElement.getAttribute("data-theme")) || "dark",
 
   async login(username: string, password: string) {
     const res: any = await api.login(username, password);
@@ -252,8 +252,8 @@ export const useDash = create<DashState>((set, get) => ({
     } catch {
       /* الوضع الخاص قد يمنع التخزين */
     }
-    if (t === "light") document.documentElement.setAttribute("data-theme", "light");
-    else document.documentElement.removeAttribute("data-theme");
+    if (t === "dark") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", t); // light أو midnight
     set({ theme: t });
   },
   async setNight(v) {
