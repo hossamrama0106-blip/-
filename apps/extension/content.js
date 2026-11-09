@@ -721,9 +721,15 @@
       if (n.type === "message" || n.type === "violation" || n.type === "broadcast_audio") {
         bigNotif(n); // إشعار بارز (يرد منه) بدل التوست الصغير
         if (n.type === "broadcast_audio") { if (n.audioUrl) playVoice(n.audioUrl); else speak(n.body); }
+      } else if (n.type === "notice") {
+        // إعلانات الفريق (فلان بدأ/أنهى الشيفت/في بريك) → إشعار كبير في منتصف الشاشة لكل الزملاء
+        const mine = state.session && n.body && n.body.indexOf(state.session.name) === 0; // عن نفسي؟ (احتفلت بالفعل من الزر)
+        if (!mine) {
+          const emoji = /بدأ/.test(n.body) ? "🚀" : /أنهى/.test(n.body) ? "👋" : /استراحة|بريك|الحمام|صلاة/.test(n.body) ? "☕" : "🔔";
+          celebrate(emoji, n.body, "#334155");
+        }
       } else {
-        const titles = { notice: "🔔 إشعار", spotlight: "🔴 عين الرقابة" };
-        toast(titles[n.type] || "إشعار", n.body, false);
+        toast(n.type === "spotlight" ? "🔴 عين الرقابة" : "إشعار", n.body, false);
       }
     });
   }
