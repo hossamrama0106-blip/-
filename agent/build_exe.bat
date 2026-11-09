@@ -14,7 +14,7 @@ echo [1/2] تثبيت PyInstaller + مكتبات اللقطات + أيقونة �
 python -m pip install --upgrade pyinstaller mss pillow pystray
 echo.
 echo [2/2] بناء البرنامج...
-python -m PyInstaller --onefile --windowed --name KhiamAgent --hidden-import pystray._win32 --distpath "%~dp0dist" --workpath "%~dp0build_tmp" --specpath "%~dp0build_tmp" "%~dp0khiam_agent.py"
+python -m PyInstaller --onefile --windowed --name KhiamAgent --icon "%~dp0khiam.ico" --add-data "%~dp0logo.png;." --hidden-import pystray._win32 --hidden-import PIL.ImageTk --distpath "%~dp0dist" --workpath "%~dp0build_tmp" --specpath "%~dp0build_tmp" "%~dp0khiam_agent.py"
 echo.
 echo ============================================
 echo   تمّ:  %~dp0dist\KhiamAgent.exe

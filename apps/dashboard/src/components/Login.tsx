@@ -25,6 +25,7 @@ export default function Login() {
     <div className="min-h-full grid place-items-center p-4">
       <form onSubmit={submit} className="w-full max-w-sm bg-ink-850 border border-ink-700 rounded-2xl p-7 shadow-2xl">
         <div className="text-center mb-6">
+          <img src="/icon-192.png" alt="خيام" className="w-20 h-20 rounded-2xl mx-auto mb-3 shadow-lg" />
           <div className="text-3xl font-extrabold text-white">Khiam Ops</div>
           <div className="text-sm text-slate-400 mt-1">داشبورد إدارة فريق خدمة العملاء</div>
         </div>

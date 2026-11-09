@@ -69,7 +69,7 @@ await cp(join(root, "apps/extension"), join(pack, "extension"), { recursive: tru
 
 // 2) البرنامج (ملفات التشغيل فقط — بلا config.json الشخصي ولا الكاش)
 await mkdir(join(pack, "agent"), { recursive: true });
-for (const f of ["khiam_agent.py", "config.example.json", "requirements.txt", "README.md", "build_exe.bat", "khiam_installer.iss"]) {
+for (const f of ["khiam_agent.py", "config.example.json", "requirements.txt", "README.md", "build_exe.bat", "build_installer.bat", "khiam_installer.iss", "logo.png", "khiam.ico"]) {
   const src = join(root, "agent", f);
   if (existsSync(src)) await cp(src, join(pack, "agent", f));
 }

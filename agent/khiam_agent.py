@@ -137,6 +137,25 @@ def set_windows_startup(enable):
         return False
 
 
+def _logo_path():
+    """مسار لوجو خيام (dev: مجلد البرنامج؛ exe مبنيّ: مجلد الاستخراج المؤقّت)."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    p = os.path.join(base, "logo.png")
+    return p if os.path.exists(p) else None
+
+
+def _logo_image(size):
+    """صورة اللوجو بحجم مطلوب (Pillow لجودة أعلى)؛ None لو تعذّر."""
+    try:
+        from PIL import Image, ImageTk
+        p = _logo_path()
+        if not p:
+            return None
+        return ImageTk.PhotoImage(Image.open(p).convert("RGBA").resize((size, size), Image.LANCZOS))
+    except Exception:
+        return None
+
+
 TOKEN = ""
 
 
@@ -436,10 +455,20 @@ def run_gui(cfg):
 
     head = tk.Frame(root, bg=BG)
     head.pack(fill="x", pady=(18, 4))
-    cv = tk.Canvas(head, width=56, height=56, bg=BG, highlightthickness=0)
-    cv.create_oval(5, 5, 51, 51, fill=ACC, outline="")
-    cv.create_text(28, 28, text="K", fill="#ffffff", font="Tahoma 20 bold")
-    cv.pack()
+    _logo = _logo_image(60)
+    if _logo is not None:
+        _ll = tk.Label(head, image=_logo, bg=BG)
+        _ll.image = _logo  # امنع الـ garbage collection
+        _ll.pack()
+        try:
+            root.iconphoto(True, _logo)  # أيقونة النافذة/شريط المهام
+        except Exception:
+            pass
+    else:
+        cv = tk.Canvas(head, width=56, height=56, bg=BG, highlightthickness=0)
+        cv.create_oval(5, 5, 51, 51, fill=ACC, outline="")
+        cv.create_text(28, 28, text="K", fill="#ffffff", font="Tahoma 20 bold")
+        cv.pack()
     tk.Label(head, text="Khiam Ops", bg=BG, fg="#ffffff", font="Tahoma 17 bold").pack(pady=(8, 1))
     tk.Label(head, text="برنامج متابعة الأداء — معلن وشفّاف", bg=BG, fg=SUB, font="Tahoma 9").pack()
 
