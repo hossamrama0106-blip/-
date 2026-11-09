@@ -121,13 +121,29 @@
 
   // ---------- shadow bar ----------
   let root, els;
+  // إزاحة محتوى الموقع لأسفل بقدر ارتفاع الشريط — يخلّي الشريط ملتصقًا أعلى ميتا بدل ما يعوم فوق ترويسة ميتا ويغطّيها
+  function dockOffset(px) {
+    if (SITE !== "meta" && SITE !== "instagram" && SITE !== "whatsapp") return;
+    try {
+      let s = document.getElementById("khiam-dock-offset");
+      if (!s) {
+        s = document.createElement("style");
+        s.id = "khiam-dock-offset";
+        (document.head || document.documentElement).appendChild(s);
+      }
+      // أفضل جهد يشتغل مع معظم تخطيطات ميتا: إزاحة body وأول حاوية جذر للتطبيق
+      s.textContent = `html{scroll-padding-top:${px}px;} body{padding-top:${px}px !important;} body>div:first-of-type{margin-top:0 !important;}`;
+    } catch (_) {}
+  }
   function mountBar() {
     let host = document.getElementById(HOST_ID);
     if (host) return;
     host = document.createElement("div");
     host.id = HOST_ID;
+    // ملتصق أعلى الصفحة (مش عائم فوق المحتوى) — مع إزاحة المحتوى لأسفل بنفس الارتفاع
     host.style.cssText = "all:initial;position:fixed;top:0;left:0;right:0;height:36px;z-index:2147483647;";
     (document.documentElement || document.body).appendChild(host);
+    dockOffset(36);
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `
       <style>
@@ -258,6 +274,7 @@
     els.chatBtn.addEventListener("click", toggleChat);
     function collapseBar() {
       host.style.display = "none";
+      dockOffset(0); // مُصغّر → شيل إزاحة المحتوى
       try { chrome.storage.local.set({ barMin: 1 }); } catch (_) {}
       let r = document.getElementById("khiam-restore");
       if (!r) {
@@ -265,7 +282,7 @@
         r.id = "khiam-restore";
         r.textContent = "Khiam ▸";
         r.style.cssText = "position:fixed;top:8px;right:8px;z-index:2147483647;background:#6366f1;color:#fff;font:600 12px sans-serif;padding:5px 11px;border-radius:999px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.4)";
-        r.addEventListener("click", () => { host.style.display = ""; r.remove(); try { chrome.storage.local.remove("barMin"); } catch (_) {} });
+        r.addEventListener("click", () => { host.style.display = ""; dockOffset(36); r.remove(); try { chrome.storage.local.remove("barMin"); } catch (_) {} });
         (document.documentElement || document.body).appendChild(r);
       } else r.style.display = "";
     }
