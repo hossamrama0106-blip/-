@@ -731,7 +731,7 @@
     const href = (threadLink(row) && threadLink(row).getAttribute("href")) || "";
     const tt = (href.match(/thread_type=([A-Z_]+)/) || [])[1] || "";
     if (/IG_/.test(tt)) return "instagram";
-    if (/WA_|WHATSAPP/.test(tt)) return "whatsapp";
+    if (/WA_|WHATSAPP|WEC_/.test(tt)) return "whatsapp"; // WEC_MESSAGE = واتساب داخل Business Suite
     if (/FB_/.test(tt)) return "messenger";
     const badge = row.querySelector && row.querySelector('img[alt="Instagram"], img[alt="WhatsApp"], img[alt="Messenger"]');
     const alt = (badge && badge.getAttribute("alt")) || "";
@@ -906,9 +906,17 @@
   // إشارات واتساب الثابتة: لوحة القائمة #pane-side، كل محادثة div[role="listitem"]،
   // الاسم span[title]، غير المقروء = شارة عدّاد aria-label فيها unread/غير مقروء.
   function waChatRows() {
-    const pane = document.querySelector("#pane-side") || document.querySelector('[aria-label="Chat list"]') || document.querySelector('[data-testid="chat-list"]');
-    if (!pane) return [];
-    return Array.from(pane.querySelectorAll('div[role="listitem"]'));
+    const pane =
+      document.querySelector("#pane-side") ||
+      document.querySelector('[aria-label="قائمة الدردشة"]') ||
+      document.querySelector('[aria-label="Chat list"]') ||
+      document.querySelector('[data-testid="chat-list"]');
+    const scope = pane || document;
+    // الإصدار القديم: listitem. الحديث (مؤكَّد على واتساب الحالي): شبكة role="grid" بصفوف role="row".
+    let rows = Array.from(scope.querySelectorAll('div[role="listitem"]'));
+    if (!rows.length) rows = Array.from(scope.querySelectorAll('[role="grid"] [role="row"]'));
+    if (!rows.length) rows = Array.from(scope.querySelectorAll('div[role="row"]'));
+    return rows;
   }
   function waUnread(row) {
     // شارة عدّاد غير المقروء — aria-label صريح (أكثر اللغات: "N unread message(s)" / "غير مقروء")

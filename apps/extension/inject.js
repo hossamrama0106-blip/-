@@ -28,7 +28,7 @@
     const p = (platform || "").toUpperCase();
     const t = (type || "").toUpperCase();
     if (p.includes("INSTAGRAM") || t.includes("IG")) return "instagram";
-    if (p.includes("WHATSAPP") || t.includes("WA")) return "whatsapp";
+    if (p.includes("WHATSAPP") || t.includes("WA") || t.includes("WEC")) return "whatsapp"; // WEC = واتساب داخل Business Suite
     return "messenger";
   }
   // رابط فتح المحادثة (أفضل جهد) من بارامترات الصفحة + fbid
