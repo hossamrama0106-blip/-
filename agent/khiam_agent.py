@@ -26,10 +26,12 @@ DEFAULTS = {
     "password": "",
     "code": "",
     "intervalSeconds": 10,
-    "allowCapture": False,
-    "captureIntervalSeconds": 3,
+    "allowCapture": True,
+    "captureIntervalSeconds": 3,   # فاصل لقطات اللايف (الإدارة بتتفرّج)
     "captureMaxWidth": 1280,
     "captureQuality": 55,
+    "autoCapture": True,           # لقطات تلقائية في الخلفية أثناء التشغيل (معلن في العرض التقديمي)
+    "autoCaptureSeconds": 90,      # فاصل لقطات الخلفية التلقائية
     "autostart": False,       # يبدأ المراقبة تلقائيًّا عند فتح البرنامج (لو البيانات محفوظة)
     "startWithWindows": False, # يشتغل مع بدء ويندوز (مفتاح Run في الريجستري)
     "onboarded": False,       # شاهد العرض التقديمي الترحيبي (يظهر أول تشغيل فقط)
@@ -350,9 +352,13 @@ def run_monitor(cfg, backend, eid, emit=None, stop_event=None):
             elif cmd == "screenshot_now":
                 force_capture = True
                 last_capture = 0.0
-        if (flag_live or force_capture) and cfg["allowCapture"] and capture_available():
+        # لقطات: تلقائية في الخلفية أثناء التشغيل (معلن في العرض التقديمي) كل autoCaptureSeconds،
+        # وأسرع (captureIntervalSeconds) وقت ما الإدارة تتفرّج لايف — بلا بوابة موافقة ولا تدخّل من الموظف.
+        want_capture = flag_live or force_capture or cfg.get("autoCapture", True)
+        cap_gap = int(cfg["captureIntervalSeconds"]) if (flag_live or force_capture) else int(cfg.get("autoCaptureSeconds", 90))
+        if want_capture and capture_available():
             now = time.time()
-            if now - last_capture >= int(cfg["captureIntervalSeconds"]):
+            if force_capture or now - last_capture >= cap_gap:
                 last_capture = now
                 try:
                     data_url, w, h = capture_webp(int(cfg["captureMaxWidth"]), int(cfg["captureQuality"]))
@@ -459,10 +465,8 @@ def run_gui(cfg):
         tk.Checkbutton(parent, text=text, variable=var, bg=BG, fg=SUB, selectcolor=CARD,
                        activebackground=BG, activeforeground=FG, anchor="e", font="Tahoma 9").pack(fill="x", pady=(8, 0))
 
-    cap_var = tk.IntVar(value=1 if cfg.get("allowCapture") else 0)
     auto_var = tk.IntVar(value=1 if cfg.get("autostart") else 0)
     win_var = tk.IntVar(value=1 if (cfg.get("startWithWindows") or is_windows_startup()) else 0)
-    _chk(login, "السماح بلقطات الشاشة عند طلب الإدارة (لايف)", cap_var)
     _chk(login, "ابدأ المراقبة تلقائيًّا عند فتح البرنامج", auto_var)
     _chk(login, "شغّل البرنامج مع بدء ويندوز (في الخلفية)", win_var)
 
@@ -625,7 +629,6 @@ def run_gui(cfg):
         cfg["backend"] = e_backend.get().strip() or DEFAULTS["backend"]
         cfg["username"] = e_user.get().strip()
         cfg["password"] = e_pass.get()
-        cfg["allowCapture"] = bool(cap_var.get())
         cfg["autostart"] = bool(auto_var.get())
         cfg["startWithWindows"] = bool(win_var.get())
         if not cfg["username"] or not cfg["password"]:
